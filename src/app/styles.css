@@ -3133,6 +3133,19 @@ button.display-button {
   .midi-button {
     max-width: 150px;
   }
+  /* The top bar closes up too (fonts differ between computers, so leave some room to spare). */
+  .topbar {
+    gap: 5px;
+    padding: 0 8px;
+  }
+  .topbar .badge-extra {
+    display: none;
+  }
+  .topbar .text-button,
+  .topbar .primary-button {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 
 @media (max-width: 900px) {
