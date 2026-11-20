@@ -1,0 +1,398 @@
+/**
+ * The built-in instruments. Nothing is recorded or downloaded: every note is
+ * made on the spot from oscillators, noise and filters, so JuraDAW stays
+ * small and works offline. The same code plays live and makes the mixdown.
+ *
+ * Each instrument is a recipe that builds one note (a "voice") and hands
+ * back the way to let it go. The LEVEL numbers were set by measuring, so the
+ * instruments are about as loud as each other at the same velocity.
+ */
+import { playDrum } from "./drums";
+import { ICONS } from "./instrumentIcons";
+import { Patch } from "./patch";
+import { pluckBuffer } from "./pluck";
+import { clamp, midiToHz, velocityBrightness, velocityGain } from "./shared";
+import { makeVoice, type Voice, type VoiceParts } from "./voice";
+
+/** "keys" instruments play pitches; "drums" plays a different drum on each key. */
+export type InstrumentKind = "keys" | "drums";
+
+export interface Instrument {
+  /** What a track's `instrument` holds. */
+  id: string;
+  /** What the user sees. */
+  name: string;
+  /** The heading it's listed under. */
+  group: string;
+  /** A 48×48 picture as SVG markup, drawn in the text colour. */
+  icon: string;
+  kind: InstrumentKind;
+  /**
+   * Start a note at a time on the context's clock (now, if that's passed),
+   * playing into `destination`. Call `stop` on what comes back to let it go.
+   */
+  startVoice(ctx: BaseAudioContext, destination: AudioNode, pitch: number, velocity: number, when: number): Voice;
+}
+
+type Recipe = (p: Patch, pitch: number, velocity: number) => VoiceParts;
+
+// ── the recipes ──
+
+/** Strengths of a piano string's harmonics: falling away, with every 7th weak (where the hammer strikes). */
+const PIANO_WAVE = Array.from({ length: 32 }, (_, i) => {
+  const n = i + 1;
+  return (n % 7 === 0 ? 0.3 : 1) / Math.pow(n, 1.25);
+});
+
+/** Piano: three strings a touch out of tune with each other, bright at the hammer blow and mellowing as they ring. */
+const piano: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  // Low strings ring for a long time, high ones die quickly.
+  const decay = clamp(3.2 * Math.pow(2, -(pitch - 36) / 22), 0.3, 5);
+
+  const tone = p.filter("lowpass", 1000, 0.5);
+  const top = Math.min(f * (2.5 + 10 * bright * bright), 15000);
+  tone.frequency.setValueAtTime(top, t);
+  tone.frequency.setTargetAtTime(Math.min(f * 3.5 + 300, top), t, 0.12 + decay * 0.25);
+
+  const wave = p.wave("piano", PIANO_WAVE);
+  // Unequal strengths, so the slow beating between the strings never cancels the note out.
+  p.osc(wave, f, 0.3).connect(p.gain(0.42)).connect(tone);
+  p.osc(wave, f, -1.9).connect(p.gain(0.34)).connect(tone);
+  p.osc(wave, f, 2.3).connect(p.gain(0.24)).connect(tone);
+
+  // The knock of the hammer: a tiny burst of noise.
+  const noise = p.noise();
+  noise.stop(t + 0.25);
+  const knock = p.filter("bandpass", clamp(f * 3, 400, 4000), 0.8);
+  const knockLevel = p.envelope(0.5 * bright, 0.001, 0, 0.012);
+  noise.connect(knock).connect(knockLevel).connect(tone);
+
+  const amp = p.envelope(1, 0.003, 0, decay);
+  const level = p.gain(LEVEL.piano * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.07);
+};
+
+/** Electric piano: two sines, one wobbling the other (FM), with a bell-like "tine" at the start and a gentle sway from side to side. */
+const electricPiano: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const decay = clamp(1.8 * Math.pow(2, -(pitch - 48) / 30), 0.5, 2.5);
+
+  // The body: a carrier with a modulator at the same pitch, growling when hit hard and mellowing quickly.
+  const body = p.osc("sine", f);
+  const bodyMod = p.osc("sine", f);
+  const bodyDepth = p.gain(0);
+  bodyDepth.gain.setValueAtTime(f * 1.9 * bright * bright, t);
+  bodyDepth.gain.setTargetAtTime(f * 0.45, t, 0.4);
+  bodyMod.connect(bodyDepth).connect(body.frequency);
+
+  // The tine: a high, quickly fading modulator gives the chime of the attack. Left out at the very top, where it would only whistle.
+  const tineShare = clamp(1 - (pitch - 72) / 18, 0, 1);
+  const tine = p.osc("sine", f, 3);
+  const tineMod = p.osc("sine", f * 14);
+  const tineDepth = p.gain(0);
+  tineDepth.gain.setValueAtTime(f * 14 * 0.7 * bright * tineShare, t);
+  tineDepth.gain.setTargetAtTime(0, t, 0.07);
+  tineMod.connect(tineDepth).connect(tine.frequency);
+  const tineLevel = p.envelope(0.45, 0.002, 0.12, 0.25);
+
+  const amp = p.envelope(1, 0.004, 0, decay);
+  body.connect(amp);
+  tine.connect(tineLevel).connect(amp);
+
+  // The sway of a suitcase piano's speakers.
+  const sway = p.pan(0);
+  const swayLfo = p.osc("sine", 4.3);
+  const swayDepth = p.gain(0.3);
+  swayLfo.connect(swayDepth).connect(sway.pan);
+
+  // This kind of FM leaves a slow offset in the wave; the filter takes it out.
+  const steady = p.filter("highpass", 25, 0.7);
+  const level = p.gain(LEVEL["electric-piano"] * velocityGain(velocity));
+  amp.connect(steady).connect(sway).connect(level);
+  return p.parts(level, 0.09);
+};
+
+/**
+ * Organ drawbars as harmonics of a note an octave below the key:
+ * 16′, 8′, 5⅓′, 4′, 2⅔′, 2′ and a little 1′.
+ */
+const ORGAN_WAVE = [0.7, 1, 0.55, 0.5, 0, 0.25, 0, 0.22, 0, 0, 0, 0.06, 0, 0, 0, 0.1];
+
+/** Organ: drawbar tones that hold for as long as the key is down, with a slow shimmer and a little key click. */
+const organ: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const wave = p.wave("organ", ORGAN_WAVE);
+  const pipes = p.gain(1);
+  const main = p.osc(wave, f / 2);
+  const chorus = p.osc(wave, f / 2, 5);
+  const chorusLevel = p.gain(0.5);
+  main.connect(pipes);
+  chorus.connect(chorusLevel).connect(pipes);
+
+  // Vibrato, as an organ's scanner makes.
+  const vibrato = p.osc("sine", 6.3);
+  const vibratoDepth = p.gain(4);
+  vibrato.connect(vibratoDepth);
+  vibratoDepth.connect(main.detune);
+  vibratoDepth.connect(chorus.detune);
+
+  // The click of the key contact.
+  const click = p.osc("sine", f * 4);
+  const clickLevel = p.envelope(0.25, 0.001, 0, 0.012);
+  click.connect(clickLevel).connect(pipes);
+
+  const tone = p.filter("lowpass", 5500, 0.5);
+  const amp = p.envelope(1, 0.006, 1, 0.1);
+  // An organ is hardly touch-sensitive: velocity makes only a small difference.
+  const level = p.gain(LEVEL.organ * (0.6 + 0.4 * velocityGain(velocity)));
+  pipes.connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.025);
+};
+
+/** A slow vibrato that grows in after the note starts, wired to oscillators' tuning. */
+function delayedVibrato(p: Patch, rate: number, cents: number, after: number, oscillators: OscillatorNode[]): void {
+  const lfo = p.osc("sine", rate);
+  const depth = p.gain(0);
+  depth.gain.setValueAtTime(0, p.start + after);
+  depth.gain.setTargetAtTime(cents, p.start + after, 0.25);
+  lfo.connect(depth);
+  for (const osc of oscillators) depth.connect(osc.detune);
+}
+
+/** Strings: a section of slightly out-of-tune sawtooth "players" spread from left to right, easing in and out. */
+const strings: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.filter("lowpass", Math.min(900 + f * 3.5 * bright, 9000), 0.4);
+  const players: OscillatorNode[] = [];
+  const section: [detune: number, pan: number, share: number, octave: number][] = [
+    [-9, -0.7, 0.45, 1],
+    [8, 0.7, 0.4, 1],
+    [0, 0, 0.5, 1],
+    [3, 0.2, 0.14, 2],
+  ];
+  for (const [detune, pan, share, octave] of section) {
+    const osc = p.osc("sawtooth", f * octave, detune);
+    players.push(osc);
+    osc.connect(p.gain(share)).connect(p.pan(pan)).connect(tone);
+  }
+  delayedVibrato(p, 5.3, 7, 0.25, players);
+
+  // Take the boom out from below the note.
+  const body = p.filter("highpass", f * 0.6, 0.5);
+  const amp = p.gain(0);
+  amp.gain.setValueAtTime(0, t);
+  amp.gain.setTargetAtTime(1, t, 0.07 + 0.08 * (1 - bright));
+  const level = p.gain(LEVEL.strings * velocityGain(velocity));
+  tone.connect(body).connect(amp).connect(level);
+  return p.parts(level, 0.16);
+};
+
+/** Pad: a soft, wide, slowly opening wash for long chords. */
+const pad: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.filter("lowpass", 300, 1.2);
+  const open = Math.min(500 + f * 2.5 * bright, 6000);
+  tone.frequency.setValueAtTime(Math.min(200 + f, open), t);
+  tone.frequency.setTargetAtTime(open, t, 0.7);
+  // The filter drifts gently so held chords stay alive.
+  const drift = p.osc("sine", 0.23);
+  const driftDepth = p.gain(open * 0.18);
+  drift.connect(driftDepth).connect(tone.frequency);
+
+  p.osc("sawtooth", f, -11).connect(p.gain(0.5)).connect(p.pan(-0.8)).connect(tone);
+  p.osc("sawtooth", f, 11).connect(p.gain(0.5)).connect(p.pan(0.8)).connect(tone);
+  p.osc("triangle", f).connect(p.gain(0.4)).connect(tone);
+  p.osc("triangle", f / 2).connect(p.gain(0.25)).connect(tone);
+  // A glassy octave on top, past the filter.
+  const glass = p.gain(0.07);
+  p.osc("sine", f * 2, 4).connect(glass);
+
+  const amp = p.gain(0);
+  amp.gain.setValueAtTime(0, t);
+  amp.gain.setTargetAtTime(1, t, 0.2);
+  const level = p.gain(LEVEL.pad * velocityGain(velocity));
+  tone.connect(amp);
+  glass.connect(amp);
+  amp.connect(level);
+  return p.parts(level, 0.45);
+};
+
+/** Bass: a round, plucked electric-bass note — a sawtooth for the growl over a triangle for the weight. */
+const bass: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.filter("lowpass", 1000, 1.2);
+  const top = Math.min(f * (4 + 9 * bright), 7000);
+  tone.frequency.setValueAtTime(top, t);
+  // The filter rests high enough to leave some of the note's upper harmonics: small speakers can't play the
+  // bottom of a bass note, and it's those harmonics that let the ear still hear which note it is.
+  tone.frequency.setTargetAtTime(Math.min(f * 5 + 300, top), t, 0.1);
+  p.osc("sawtooth", f).connect(p.gain(0.85)).connect(tone);
+  p.osc("triangle", f).connect(p.gain(0.55)).connect(tone);
+  const amp = p.envelope(1, 0.004, 0.55, 0.35);
+  // A held note slowly fades, as a string does.
+  amp.gain.setTargetAtTime(0, t + 0.8, 3);
+  const level = p.gain(LEVEL.bass * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.05);
+};
+
+/** Synth bass: a square and a sawtooth through a filter that snaps shut — the squelchy, punchy kind. */
+const synthBass: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.filter("lowpass", 1000, 5);
+  const top = Math.min(f * (6 + 14 * bright), 9000);
+  tone.frequency.setValueAtTime(top, t);
+  tone.frequency.setTargetAtTime(Math.min(f * 4 + 250, top), t, 0.08);
+  p.osc("square", f).connect(p.gain(0.45)).connect(tone);
+  p.osc("sawtooth", f, 9).connect(p.gain(0.45)).connect(tone);
+  p.osc("sine", f).connect(p.gain(0.25)).connect(tone);
+  const amp = p.envelope(1, 0.003, 0.75, 0.2);
+  const level = p.gain(LEVEL["synth-bass"] * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.04);
+};
+
+/** Lead: a singing, bright synth for tunes, with vibrato that comes in on held notes. */
+const lead: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.filter("lowpass", 1000, 2);
+  const top = Math.min(1200 + f * 5 * bright, 11000);
+  tone.frequency.setValueAtTime(top, t);
+  tone.frequency.setTargetAtTime(Math.min(900 + f * 3 * bright, top), t, 0.2);
+  const voices: OscillatorNode[] = [];
+  const mix: [type: OscillatorType, octave: number, detune: number, share: number][] = [
+    ["sawtooth", 1, 0, 0.42],
+    ["sawtooth", 1, -7, 0.3],
+    ["sawtooth", 1, 8, 0.3],
+    ["square", 0.5, 0, 0.16],
+  ];
+  for (const [type, octave, detune, share] of mix) {
+    const osc = p.osc(type, f * octave, detune);
+    voices.push(osc);
+    osc.connect(p.gain(share)).connect(tone);
+  }
+  delayedVibrato(p, 5.8, 12, 0.18, voices);
+  const amp = p.envelope(1, 0.008, 0.85, 0.15);
+  const level = p.gain(LEVEL.lead * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.06);
+};
+
+/** Pluck: a plucked string (see pluck.ts), like a harp or a nylon guitar. */
+const pluck: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const player = p.player(pluckBuffer(p.ctx, pitch, f, velocityBrightness(velocity)));
+  // Soften the first instant so it never clicks.
+  const amp = p.envelope(1, 0.002, 1, 0.1);
+  const level = p.gain(LEVEL.pluck * velocityGain(velocity));
+  player.connect(amp).connect(level);
+  return p.parts(level, 0.1);
+};
+
+/** Bells: sines wobbling each other at "wrong" ratios, which is what makes a bell sound like metal. They ring on after the key is let go. */
+const bells: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const decay = clamp(2.2 * Math.pow(2, -(pitch - 60) / 24), 0.6, 4);
+  // High bells get less wobble, or they'd turn harsh.
+  const depthShare = Math.min(1, 900 / f);
+
+  const main = p.osc("sine", f);
+  const mod = p.osc("sine", f * 3.5);
+  const depth = p.gain(0);
+  depth.gain.setValueAtTime(f * 3.5 * 1.3 * bright * depthShare, t);
+  depth.gain.setTargetAtTime(f * 3.5 * 0.12 * depthShare, t, decay * 0.4);
+  mod.connect(depth).connect(main.frequency);
+
+  // The strike: a short high partial.
+  const strike = p.osc("sine", f * 5.4);
+  const strikeLevel = p.envelope(0.22 * bright * depthShare, 0.001, 0, 0.18);
+  // A hum a little below, as real bells have.
+  const hum = p.osc("sine", f * 0.5, 4);
+  const humLevel = p.envelope(0.18, 0.02, 0, decay * 1.3);
+
+  const amp = p.envelope(1, 0.002, 0, decay);
+  main.connect(amp);
+  const level = p.gain(LEVEL.bells * velocityGain(velocity));
+  amp.connect(level);
+  strike.connect(strikeLevel).connect(level);
+  hum.connect(humLevel).connect(level);
+  return p.parts(level, 0.45);
+};
+
+/**
+ * How loud each recipe is made, set by measuring (devkit/audio-check.mjs
+ * prints the figures) so the instruments match at velocity 100.
+ */
+const LEVEL = {
+  piano: 0.42,
+  "electric-piano": 0.32,
+  organ: 0.2,
+  strings: 0.32,
+  pad: 0.33,
+  bass: 0.52,
+  "synth-bass": 0.47,
+  lead: 0.48,
+  pluck: 0.55,
+  bells: 0.31,
+};
+
+// ── the list ──
+
+function keyed(id: keyof typeof LEVEL, name: string, group: string, recipe: Recipe): Instrument {
+  return {
+    id,
+    name,
+    group,
+    icon: ICONS[id],
+    kind: "keys",
+    startVoice(ctx, destination, pitch, velocity, when) {
+      const patch = new Patch(ctx, Math.max(when, ctx.currentTime));
+      return makeVoice(ctx, destination, recipe(patch, pitch, velocity));
+    },
+  };
+}
+
+/** Every built-in instrument, in the order they're offered. */
+export const INSTRUMENTS: Instrument[] = [
+  keyed("piano", "Piano", "Keys", piano),
+  keyed("electric-piano", "Electric piano", "Keys", electricPiano),
+  keyed("organ", "Organ", "Keys", organ),
+  keyed("strings", "Strings", "Strings and pads", strings),
+  keyed("pad", "Soft pad", "Strings and pads", pad),
+  keyed("bass", "Bass guitar", "Bass", bass),
+  keyed("synth-bass", "Synth bass", "Bass", synthBass),
+  keyed("lead", "Synth lead", "Synths", lead),
+  keyed("pluck", "Pluck", "Synths", pluck),
+  keyed("bells", "Bells", "Synths", bells),
+  {
+    id: "drums",
+    name: "Drum kit",
+    group: "Drums",
+    icon: ICONS.drums,
+    kind: "drums",
+    startVoice: playDrum,
+  },
+];
+
+/** The instrument with an id; the piano if there's no such instrument (an older or newer file). */
+export function instrumentById(id: string): Instrument {
+  return INSTRUMENTS.find((i) => i.id === id) ?? INSTRUMENTS[0];
+}
