@@ -5,7 +5,8 @@
   never "region", "bus" or "quantize" without saying what it means). The owner's words for this app: "extremely user
   friendly and easy to navigate", "I don't want a steep learning curve". Every trade-off favours being easy to find
   your way round over professional depth.
-- Merging: in JuraCUT the owner has said to squash-merge PRs without asking once CI passes. That hasn't been said for JuraDAW yet — ask before merging.
+- The owner has said to merge PRs without asking once CI passes (squash merge), then tell them what changed so
+  they can try it on the live site.
 - JuraDAW is the sister app of JuraCAD (github.com/gm7dha/JuraCAD) and JuraCUT (github.com/gm7dha/JuraCUT): the same
   stack, look, install flow and ways of working. When something exists in JuraCUT (a dialog, a helper, a test
   pattern), copy how it's done there: `styles.css`, `Modal`, `TopBar`, the Library window, `popupGuard.ts`, `theme.ts`,
