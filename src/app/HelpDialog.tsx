@@ -1,0 +1,126 @@
+/**
+ * Help: getting started in six short steps, then the mouse and keyboard
+ * tables. Written for someone who has never used a music program.
+ */
+import { useStore } from "../model/store";
+import { Modal } from "./Modal";
+import { detectPlatform, helpRows } from "./platform";
+
+export function HelpDialog() {
+  const closeDialog = useStore((s) => s.closeDialog);
+  const rows = helpRows(detectPlatform());
+  return (
+    <Modal title="Help and shortcuts" onClose={closeDialog} width={640}>
+      <p>
+        JuraDAW is a music studio in your browser. A song is made of <strong>tracks</strong> (one for each instrument or recording), and each track holds <strong>clips</strong>: blocks of notes, or
+        stretches of recorded sound, laid out along the bars of the song.
+      </p>
+      <h3 className="help-heading">Getting started</h3>
+      <ol className="help-steps">
+        <li>
+          <strong>Add a track</strong> with <em>Add track</em> in the toolbar: an instrument to play, a drum kit, or a track for recording sound.
+        </li>
+        <li>
+          <strong>Play it.</strong> Open <em>Keys</em> and click the on-screen keys — or tick “Play with the computer keyboard” and use the letter keys. To change the sound, click the track and pick another
+          instrument from the cards in the panel on the left.
+        </li>
+        <li>
+          <strong>Put something in the song.</strong> Press <em>Record</em> (the red button) and play; or double-click an empty part of the track to make a clip and draw its notes in the editor; or drop in
+          a ready-made beat from the <em>Library</em>.
+        </li>
+        <li>
+          <strong>Listen.</strong> Press <kbd>Space</kbd> to play and stop. Playing starts at the <em>play position</em> (the blue line): click the numbered ruler to move it. Drag across the yellow strip
+          above the ruler to repeat a part.
+        </li>
+        <li>
+          <strong>Build it up.</strong> Add more tracks, drag clips about, repeat them, and balance the tracks in the <em>Mixer</em>. Undo takes back anything — even a deleted track.
+        </li>
+        <li>
+          <strong>Keep it.</strong> <em>Save</em> makes a <code>.juradaw</code> file you can open again later (only JuraDAW opens it). <em>Export</em> makes a sound file (WAV) in your Downloads folder: it
+          plays on any phone or computer and can be sent by e-mail or message. A three-minute song is about 30 MB.
+        </li>
+      </ol>
+      <h3 className="help-heading">A plug-in piano keyboard (MIDI)</h3>
+      <p>
+        Plug it in, then press <em>Connect a MIDI keyboard</em> (in the Keys panel, or in Settings). The first time, your browser may ask to use MIDI devices: choose Allow. Then click the instrument track
+        you want to play — its sound comes out as you press the keys, and Record records what you play. (Chrome and Edge can do this; Safari can't.)
+      </p>
+      <h3 className="help-heading">Recording your voice or an instrument</h3>
+      <p>
+        Add a track with <em>Record sound</em>, click it, and press <em>Record</em> (the red button). The first time, your browser asks to use the microphone: choose Allow. You hear a count-in of one bar,
+        then it records until you press <kbd>Space</kbd>. Wear headphones, or the microphone will also pick up the rest of the song. The count-in can be changed (or turned off) in Settings.
+      </p>
+      <h3 className="help-heading">Words you'll see</h3>
+      <ul className="help-list">
+        <li>
+          <strong>1.1</strong> (the numbers in the middle of the toolbar) — where you are in the song: bar 1, beat 1, with the time beside it. Click the tempo there to change how fast the song goes.
+        </li>
+        <li>
+          <strong>Tempo</strong> — how fast the song goes, in beats per minute. <strong>Bar</strong> — a group of beats (usually four); the ruler counts bars.
+        </li>
+        <li>
+          <strong>Play position</strong> — the blue line: where playing starts, and where things you paste, import or take from the Library go in.
+        </li>
+        <li>
+          <strong>Snap</strong> — what clips and notes line up with as you drag them, so things stay in time. Hold Shift while dragging to place something freely.
+        </li>
+        <li>
+          <strong>Loop</strong> — a part of the song that plays round and round. <strong>Metronome</strong> — a click on every beat to play along to.
+        </li>
+        <li>
+          <strong>Mute</strong> (M) silences a track; <strong>Solo</strong> (S) lets you hear just that one. <strong>Reverb</strong> is the sound of a room; <strong>Echo</strong> is repeats that fade away.
+        </li>
+        <li>
+          <strong>Semitone</strong> — up or down one key on the piano, black keys included (the −1 and +1 buttons). <strong>Octave</strong> — twelve keys up or down: the same note, higher or lower (−12 and
+          +12).
+        </li>
+        <li>
+          <strong>Loudness</strong> — the strip of bars under the notes in the editor: how hard each note is played. Drag a bar up or down. <strong>Tidy timing</strong> moves notes exactly onto the grid, so
+          playing that was a little early or late is put right.
+        </li>
+        <li>
+          <strong>MIDI</strong> — the way keyboards and music programs pass notes to each other. A MIDI file holds notes, not sound.
+        </li>
+      </ul>
+      <h3 className="help-heading">Mouse and touch</h3>
+      <table className="help-table">
+        <tbody>
+          {rows.mouse.map(([a, b]) => (
+            <tr key={a}>
+              <td>{a}</td>
+              <td>{b}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <h3 className="help-heading">Keys</h3>
+      <table className="help-table">
+        <tbody>
+          {rows.keys.map(([a, b]) => (
+            <tr key={a}>
+              <td>
+                <kbd>{a}</kbd>
+              </td>
+              <td>{b}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">
+        Your song is kept in this browser as you work, and saved to a <code>.juradaw</code> file with Save. JuraDAW is free and open source (MIT):{" "}
+        <a href="https://github.com/gm7dha/JuraDAW" target="_blank" rel="noreferrer">
+          github.com/gm7dha/JuraDAW
+        </a>
+        . Its sister programs are{" "}
+        <a href="https://gm7dha.github.io/JuraCAD/" target="_blank" rel="noreferrer">
+          JuraCAD
+        </a>{" "}
+        for 3D parts and{" "}
+        <a href="https://gm7dha.github.io/JuraCUT/" target="_blank" rel="noreferrer">
+          JuraCUT
+        </a>{" "}
+        for laser cutting.
+      </p>
+    </Modal>
+  );
+}
