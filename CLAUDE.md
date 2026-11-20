@@ -185,6 +185,9 @@
   and bar numbers to draw at a zoom — and `visibleBeats`), `edgeScroll.ts` (`useEdgeScroll`: a drag held at the view's edge scrolls it and
   the drag catches up through its own move handler; pure `edgeSpeed`), `prefs.ts`, `theme.ts`, `install.ts` (also
   opens a double-clicked .juradaw once installed), `platform.ts`, `download.ts`.
+- Help's surprise (the same in JuraCAD, JuraCUT and JuraDAW — keep them alike, and don't list it in CHANGELOG.md or
+  the README: it's a secret): the Windows / Mac buttons clicked 10 times within 5 seconds show `public/easter-egg.jpg`
+  (`src/app/easterEgg.ts` pure `eggClick`, tests/easterEgg; `.easter-egg` in styles.css; a smoke-test step).
 - Styles: `src/app/styles.css` is JuraCUT's with the DAW's parts added. Colours only through its CSS variables (light
   and dark themes) — never fixed colours in components; a track's colour reaches its header, clips and strip as
   `--track`. Under 1440 px the toolbar's buttons close up; under 1100 px (a 1024 px laptop) the right-hand buttons are icons
