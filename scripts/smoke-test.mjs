@@ -623,6 +623,19 @@ try {
   await page.keyboard.type("?");
   await page.waitForSelector(".modal:has-text('Help and shortcuts')");
   expect((await page.locator(".help-table tr").count()) >= 12, "the mouse and keyboard tables in Help");
+  // The Help screen's surprise (as JuraCAD's): the Windows / Mac buttons clicked 10 times within 5 seconds.
+  {
+    const win = page.getByRole("radio", { name: "Windows" });
+    for (let i = 0; i < 10; i++) await win.click();
+    await page.locator(".easter-egg img").waitFor({ timeout: 5_000 });
+    // The picture itself arrives (it isn't just an empty frame).
+    await page.waitForFunction(() => {
+      const img = document.querySelector(".easter-egg img");
+      return img && img.complete && img.naturalWidth > 0;
+    }, null, { timeout: 10_000 });
+    await page.locator(".easter-egg").click();
+    await page.locator(".easter-egg").waitFor({ state: "detached", timeout: 5_000 });
+  }
   await page.keyboard.press("Escape");
   await page.click(".phase-badge");
   await page.waitForSelector(".modal:has-text(\"What's new in JuraDAW\")");
