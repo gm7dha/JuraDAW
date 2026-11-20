@@ -3076,6 +3076,16 @@ button.display-button {
   }
 }
 
+/* Under 1320 px even "Notes on" is too wide beside the tools (fonts differ between computers): just the lit keys icon. */
+@media (max-width: 1320px) {
+  .typing-pill {
+    min-width: 36px;
+  }
+  .typing-pill-short {
+    display: none;
+  }
+}
+
 .recording-now {
   color: var(--record);
   font-size: 12.5px;
