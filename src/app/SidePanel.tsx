@@ -9,10 +9,11 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { INSTRUMENTS, instrumentById } from "../audio/instruments";
+import { AUTO_NAMES, AUTO_PARAMS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
-import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
+import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, HARMONY_STYLES, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
 import { useStore } from "../model/store";
-import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type Song, type Track } from "../model/types";
+import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type HarmonyStyle, type Song, type Track } from "../model/types";
 import { hear, playheadBeat } from "./engineApp";
 import { Icons, MarkupIcon } from "./icons";
 import { panWords } from "./Mixer";
@@ -343,6 +344,42 @@ function ArpSettings({ track }: { track: Track }) {
   );
 }
 
+function HarmonySettings({ track }: { track: Track }) {
+  const s = useStore.getState;
+  const harmony = track.harmony;
+  return (
+    <>
+      <label className="check-row" title="Add voices at other pitches that sing (or play) along with this track — lovely on a recorded voice">
+        <input
+          type="checkbox"
+          checked={!!harmony}
+          onChange={(e) => {
+            s().updateTrack(track.id, { harmony: e.target.checked ? { style: "below", amount: 0.6 } : null });
+            e.currentTarget.blur();
+          }}
+        />
+        Harmoniser <span className="muted">— extra voices along with it</span>
+      </label>
+      {harmony && (
+        <>
+          <label className="field">
+            <span className="field-label">Voices</span>
+            <select value={harmony.style} onChange={(e) => s().updateTrack(track.id, { harmony: { style: e.target.value as HarmonyStyle } })} aria-label="Which voices the harmoniser adds" title={HARMONY_STYLES.find((h) => h.style === harmony.style)?.hint}>
+              {HARMONY_STYLES.map((h) => (
+                <option key={h.style} value={h.style} title={h.hint}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SliderRow label="Voices' volume" words={percent(harmony.amount)} value={harmony.amount} min={0.05} usual={0.6} title="How loud the added voices are (double-click for the usual 60%)" make={(sg, v) => edits.updateTrack(sg, track.id, { harmony: { amount: v } })} />
+          <p className="panel-hint">{HARMONY_STYLES.find((h) => h.style === harmony.style)?.hint}. The voices keep a fixed distance from the sound, so a chord may not suit every note of a tune.</p>
+        </>
+      )}
+    </>
+  );
+}
+
 const ARP_STYLE_WORDS: Record<(typeof ARP_STYLES)[number], string> = { up: "Up", down: "Down", updown: "Up & down", random: "Random" };
 const ARP_STYLE_HINTS: Record<(typeof ARP_STYLES)[number], string> = {
   up: "From the lowest note of the chord to the highest, round and round",
@@ -385,6 +422,17 @@ function TrackSettings({ song, track }: { song: Song; track: Track }) {
       <SliderRow label="Reverb" words={percent(track.reverb)} value={track.reverb} usual={0} title="The sound of a room round this track" make={(sg, v) => withTrack(sg, track.id, { reverb: v })} />
       <SliderRow label="Echo" words={percent(track.echo)} value={track.echo} usual={0} title="Repeats that fade away" make={(sg, v) => withTrack(sg, track.id, { echo: v })} />
       <TrackEffects track={track} />
+      <HarmonySettings track={track} />
+      <div className="field-label">Automation</div>
+      <p className="panel-hint">
+        {(() => {
+          const drawn = AUTO_PARAMS.filter((p) => lineOf(track, p)).map((p) => AUTO_NAMES[p].toLowerCase());
+          return drawn.length ? `This track has a line for its ${drawn.join(" and ")}: it changes as the song plays.` : "Draw lines over the song that change this track's volume, filter or left–right as it plays.";
+        })()}
+      </p>
+      <button type="button" className="text-button small-button" onClick={() => s().setBottomPanel("automation")} title="Open the Automation tab under the tracks to draw lines for this track">
+        <Icons.Automation size={16} /> Draw automation
+      </button>
 
       {track.kind === "instrument" ? (
         <>

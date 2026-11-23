@@ -37,6 +37,7 @@ function trackLabel(was: Track, now: Track): string {
   if (only("reverb")) return `Changed the reverb on ${name}`;
   if (only("echo")) return `Changed the echo on ${name}`;
   if (only("colour")) return `Changed the colour of ${name}`;
+  if (only("automation")) return `Changed the automation on ${name}`;
   return `Changed the track ${name}`;
 }
 

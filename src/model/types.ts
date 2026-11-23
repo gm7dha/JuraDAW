@@ -44,7 +44,32 @@ export interface Track {
   chop?: number;
   /** Arpeggiator: chords held on this track are played one note at a time, in a pattern (instrument tracks). */
   arp?: Arp;
+  /** Lines drawn over the song: how the volume, the filter or the left–right place change as it plays. */
+  automation?: Automation;
+  /** Harmoniser: copies of the sound at other pitches sung along with it (left out when off). */
+  harmony?: Harmony;
 }
+
+/** Which notes the harmoniser adds, each a fixed step from the sound itself. */
+export type HarmonyStyle = "below" | "fifth" | "major" | "minor" | "wide";
+
+export interface Harmony {
+  style: HarmonyStyle;
+  /** How loud the added voices are, 0–1. */
+  amount: number;
+}
+
+/** What a line of automation can move. */
+export type AutoParam = "volume" | "filter" | "pan";
+
+/** A point on a line: at a place in the song (beats), a value 0–1 (see src/model/automation.ts for what it means). */
+export interface AutoPoint {
+  beat: number;
+  value: number;
+}
+
+/** A track's lines, each in order of beat (left out when there are none). */
+export type Automation = Partial<Record<AutoParam, AutoPoint[]>>;
 
 /** How an arpeggiator plays a held chord. */
 export interface Arp {

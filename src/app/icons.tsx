@@ -229,6 +229,14 @@ export const Icons = {
       <path d="M4 9h4M10 15h4M16 7.5h4" strokeWidth={2.6} />
     </Svg>
   ),
+  /** Automation: a line with points on it. */
+  Automation: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M3 17l5-8 6 5 7-9" />
+      <circle cx="8" cy="9" r="1.6" fill="currentColor" />
+      <circle cx="14" cy="14" r="1.6" fill="currentColor" />
+    </Svg>
+  ),
   /** The on-screen keys. */
   Keys: (p: IconProps) => (
     <Svg {...p}>

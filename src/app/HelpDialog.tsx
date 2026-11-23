@@ -148,6 +148,15 @@ export function HelpDialog() {
           <strong>Arpeggiator</strong>: tick it under a track's effects and the chords on that track play one note at a time, in a pattern. Write long, held chords and let it do the rest.
         </li>
         <li>
+          <strong>Automation</strong>: open the <em>Automation</em> tab under the tracks (or press <em>Draw automation</em> in a track's settings) and draw a line for the selected track's{" "}
+          <em>Volume</em>, <em>Filter</em> or <em>Left–right</em>: click to add a point, drag to move it, double-click to take it away. The track follows the line as the song plays — a
+          fade-out at the end, a filter opening into the chorus.
+        </li>
+        <li>
+          <strong>Harmoniser</strong>: tick it under a track's effects for extra voices that sing along — an octave below, a fifth above, a bright or dark chord, or below and above at once.
+          Lovely on a recorded voice.
+        </li>
+        <li>
           <strong>Drum machines</strong>: the <em>808 kit</em> (trap and hip-hop) and the <em>Electronic kit</em> (house and techno) are with the instruments. A recording's clip can be played
           backwards: tick <em>Play backwards</em>.
         </li>

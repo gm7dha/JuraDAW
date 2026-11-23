@@ -6,13 +6,13 @@
  * fresh array or object each call.
  */
 import type { RecordedTake } from "../audio/engineApi";
-import type { Arp, AudioInfo, Clip, Loop, Note, Song, Sweep, Track, TrackFilter, TrackKind } from "./types";
+import type { Arp, AudioInfo, Harmony, Clip, Loop, Note, Song, Sweep, Track, TrackFilter, TrackKind } from "./types";
 
 /** Select = pick, move, resize. Pencil = draw clips and notes. Eraser = click to remove. Scissors = split a clip. */
 export type Tool = "select" | "pencil" | "eraser" | "scissors";
 export type DialogName = "export" | "help" | "whatsNew" | "library" | "settings" | null;
 /** What's open along the bottom (as in Logic): the piano roll / clip editor, the mixer, the on-screen keys, or nothing. */
-export type BottomPanel = "editor" | "mixer" | "keys" | null;
+export type BottomPanel = "editor" | "mixer" | "automation" | "keys" | null;
 /** Snap grid in beats: 1 = beat, 0.5 = 1/8 note, 0.25 = 1/16, 0.125 = 1/32, 0 = off, "bar" = whole bars. */
 export type Snap = "bar" | 1 | 0.5 | 0.25 | 0.125 | 0;
 
@@ -20,7 +20,7 @@ export type Snap = "bar" | 1 | 0.5 | 0.25 | 0.125 | 0;
 export type ClipPatch = Clip extends infer C ? (C extends Clip ? Partial<Omit<C, "id" | "kind" | "sweep" | "reverse">> & { sweep?: Sweep | null; reverse?: boolean } : never) : never;
 
 /** What may be changed on a track (for the filter, just the parts that change). */
-export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null };
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null };
 
 export interface Toast {
   id: number;

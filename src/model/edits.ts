@@ -9,10 +9,11 @@
  * (`{ song, id }` or `{ song, ids }`), or null when there was nothing to do.
  */
 import { MIN_SECONDS, MOST_BEATS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
-import { DEFAULT_ARP, cleanArp, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
+import { cleanPoints } from "./automation";
+import { DEFAULT_ARP, cleanArp, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { EPS, beatsToSeconds, clipEnd, r6, secondsToBeats } from "./time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "./types";
-import type { Arp, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
+import type { Arp, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -140,7 +141,7 @@ export function duplicateTrack(song: Song, id: string): { song: Song; id: string
   return { song: { ...song, tracks, clips: [...song.clips, ...clips] }, id: copy.id };
 }
 
-export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null };
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null };
 
 /**
  * A track's settings changed, each kept inside its limits (blank names and unusable values are ignored; audio
@@ -179,6 +180,14 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
     const was = track.arp;
     if (arp && !(was && was.style === arp.style && was.rate === arp.rate && was.octaves === arp.octaves)) next.arp = arp;
   }
+  // The harmoniser: settings in part (the rest kept), or null — or an amount of 0 — to switch it off.
+  if (patch.harmony === null) delete next.harmony;
+  else if (patch.harmony) {
+    const harmony = cleanHarmony({ style: "below", amount: 0.5, ...track.harmony, ...patch.harmony });
+    const was = track.harmony;
+    if (!harmony) delete next.harmony;
+    else if (!(was && was.style === harmony.style && was.amount === harmony.amount)) next.harmony = harmony;
+  }
   if (patch.filter) {
     const filter = cleanFilter({ ...track.filter, ...patch.filter });
     const was = track.filter;
@@ -192,6 +201,24 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
   }
   const keys = Object.keys({ ...track, ...next }) as (keyof Track)[];
   if (keys.every((k) => next[k] === track[k])) return song;
+  return { ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) };
+}
+
+/**
+ * A track's line for one thing set (the points made safe), or taken away (null, or no points). Taking the last
+ * line away leaves the track with no `automation` at all.
+ */
+export function setAutomation(song: Song, trackId: string, param: AutoParam, points: readonly AutoPoint[] | null): Song {
+  const track = findTrack(song, trackId);
+  if (!track) return song;
+  const clean = points ? cleanPoints(points) : [];
+  const was = track.automation?.[param] ?? [];
+  if (clean.length === was.length && clean.every((p, i) => p.beat === was[i].beat && p.value === was[i].value)) return song;
+  const automation: Automation = { ...track.automation };
+  if (clean.length) automation[param] = clean;
+  else delete automation[param];
+  const next: Track = { ...track, automation };
+  if (!Object.keys(automation).length) delete next.automation;
   return { ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) };
 }
 

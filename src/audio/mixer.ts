@@ -2,7 +2,7 @@
  * The mixer: the path every sound takes on its way out, the same for live
  * playing and for the mixdown.
  *
- *   each track:  input → its own effects (drive → crush → tone → filter → wobble → pump → chop)
+ *   each track:  input → its own effects (drive → crush → tone → [harmony voices] → filter → wobble → pump → chop) → its volume line
  *                      → volume (and mute/solo) → left–right → the mix
  *                                         ├→ its share to the reverb
  *                                         └→ its share to the echo
@@ -14,8 +14,9 @@
  * echo (repeats in time with the tempo) shared by all the tracks. Changes
  * are eased in over a few thousandths of a second so nothing clicks.
  */
-import { CHOP_OPEN_SHARE, HIGHS_HZ, LOWS_HZ, PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, TONE_DB, chopFloor, cutoffHz, effectsOf, filterIsOn, pumpFloor, sweepAt, trackHasSweeps, type TrackEffects } from "../model/shaping";
-import type { Clip, Song, Track } from "../model/types";
+import { CHOP_OPEN_SHARE, HARMONY_STYLES, HIGHS_HZ, LOWS_HZ, PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, TONE_DB, chopFloor, cutoffHz, effectsOf, filterIsOn, harmonySteps, stepRatio, pumpFloor, sweepAt, trackHasSweeps, type TrackEffects } from "../model/shaping";
+import { lineBetween, lineOf, valueAt, volumeValueGain } from "../model/automation";
+import type { AutoPoint, Clip, Harmony, Song, Track } from "../model/types";
 import { audibleTracks } from "./schedule";
 import { beatsToSeconds, clamp, seededRandom } from "./shared";
 
@@ -131,6 +132,26 @@ interface Wobble {
   nodes: AudioNode[];
 }
 
+/** The harmoniser: a voice at each pitch any style uses, each with its own level. */
+interface Harmoniser {
+  voices: Map<number, GainNode>;
+  nodes: AudioNode[];
+}
+
+/** How long a stretch each harmony voice repeats or skips at a time (seconds): longer is smoother, shorter is quicker to follow. */
+export const HARMONY_WINDOW = 0.08;
+/** Every pitch (semitones from the sound) any harmoniser style adds. */
+const HARMONY_PITCHES = [...new Set(HARMONY_STYLES.flatMap((s) => s.steps))];
+
+/**
+ * How a harmony voice's delay moves (pure, for tests): to play `ratio` times faster, a delay that shortens by
+ * (ratio − 1) seconds every second (or lengthens, for lower voices), jumping back by the whole window when it runs out.
+ * `rate` is how many times a second it jumps; `sign` is +1 when the delay lengthens (a lower voice).
+ */
+export function harmonySweep(ratio: number, window = HARMONY_WINDOW): { rate: number; sign: 1 | -1 } {
+  return { rate: Math.abs(1 - ratio) / window, sign: ratio < 1 ? 1 : -1 };
+}
+
 interface Strip {
   input: GainNode;
   /** The track's own effects, in order. */
@@ -142,8 +163,12 @@ interface Strip {
   filter: BiquadFilterNode;
   pump: GainNode;
   chop: GainNode;
+  /** The volume line, while the song plays (1 otherwise). */
+  auto: GainNode;
   /** Made the first time the track's wobble is turned up. */
   wobble: Wobble | null;
+  /** Made the first time the track's harmoniser is turned on. */
+  harmony: Harmoniser | null;
   /** The settings last put into the two curves (making a curve is work, so only when they change). */
   driveNow: number;
   crushNow: number;
@@ -297,7 +322,9 @@ export class Mixer {
       filter: ctx.createBiquadFilter(),
       pump: ctx.createGain(),
       chop: ctx.createGain(),
+      auto: ctx.createGain(),
       wobble: null,
+      harmony: null,
       driveNow: 0,
       crushNow: 0,
       fader: ctx.createGain(),
@@ -317,7 +344,7 @@ export class Mixer {
     strip.highs.frequency.value = HIGHS_HZ;
     strip.highs.gain.value = 0;
     strip.input.connect(strip.drive).connect(strip.driveOut).connect(strip.crush).connect(strip.lows).connect(strip.highs).connect(strip.filter).connect(strip.pump);
-    strip.pump.connect(strip.chop).connect(strip.fader).connect(strip.pan).connect(this.mix);
+    strip.pump.connect(strip.chop).connect(strip.auto).connect(strip.fader).connect(strip.pan).connect(this.mix);
     strip.pan.connect(strip.reverbSend).connect(this.reverbIn);
     strip.pan.connect(strip.echoSend).connect(this.echoIn);
     if (this.meters) strip.meter = this.makeMeter(strip.pan);
@@ -355,8 +382,56 @@ export class Mixer {
     return wobble;
   }
 
+  /**
+   * The harmoniser: for each pitch, two copies of the sound read through delays that slide steadily, so they play
+   * faster (higher) or slower (lower). When a delay runs out of room it jumps back, and the two take turns — each
+   * fades out as it jumps and in as the other does — so the voice runs on smoothly.
+   */
+  private makeHarmoniser(strip: Strip): Harmoniser {
+    const ctx = this.ctx;
+    const harmony: Harmoniser = { voices: new Map(), nodes: [] };
+    const saw = ctx.createPeriodicWave(new Float32Array(33), Float32Array.from({ length: 33 }, (_, n) => (n === 0 ? 0 : (2 / (Math.PI * n)) * (n % 2 ? 1 : -1))), { disableNormalization: true });
+    const cos = ctx.createPeriodicWave(new Float32Array([0, 1]), new Float32Array([0, 0]), { disableNormalization: true });
+    const now = ctx.currentTime;
+    for (const step of HARMONY_PITCHES) {
+      const { rate, sign } = harmonySweep(stepRatio(step));
+      const level = ctx.createGain();
+      level.gain.value = 0;
+      for (const half of [0, 0.5]) {
+        // The delay slides from one end of the window to the other (a sawtooth: −1 → 1, its jump at half way).
+        const delay = ctx.createDelay(HARMONY_WINDOW * 2 + 0.01);
+        delay.delayTime.value = HARMONY_WINDOW / 2 + 0.002;
+        const slide = ctx.createOscillator();
+        slide.setPeriodicWave(saw);
+        slide.frequency.value = rate;
+        const reach = ctx.createGain();
+        reach.gain.value = (sign * HARMONY_WINDOW) / 2;
+        slide.connect(reach).connect(delay.delayTime);
+        // Its loudness: silent at the jump (half way round), full a half turn from it.
+        const fade = ctx.createGain();
+        fade.gain.value = 0.5;
+        const swell = ctx.createOscillator();
+        swell.setPeriodicWave(cos);
+        swell.frequency.value = rate;
+        const swellDepth = ctx.createGain();
+        swellDepth.gain.value = 0.5;
+        swell.connect(swellDepth).connect(fade.gain);
+        // The second copy half a turn behind the first, so one is always full while the other jumps.
+        const start = now + half / rate;
+        slide.start(start);
+        swell.start(start);
+        strip.highs.connect(delay).connect(fade).connect(level);
+        harmony.nodes.push(delay, slide, reach, fade, swell, swellDepth);
+      }
+      level.connect(strip.filter);
+      harmony.voices.set(step, level);
+      harmony.nodes.push(level);
+    }
+    return harmony;
+  }
+
   /** A track's own effects, as it has them now. */
-  private applyEffects(strip: Strip, e: TrackEffects, sweeps: boolean, atOnce: boolean): void {
+  private applyEffects(strip: Strip, e: TrackEffects, harmony: Harmony | undefined, sweeps: boolean, atOnce: boolean): void {
     if (e.drive !== strip.driveNow) {
       strip.driveNow = e.drive;
       strip.drive.curve = e.drive > 0 ? driveCurve(e.drive) : null;
@@ -375,6 +450,13 @@ export class Mixer {
     if (!(sweeps && this.shaping)) this.set(strip.filter.frequency, this.hz(e.filter.cutoff), atOnce);
     this.set(strip.lows.gain, e.lows * TONE_DB, atOnce);
     this.set(strip.highs.gain, e.highs * TONE_DB, atOnce);
+    if (harmony && !strip.harmony) strip.harmony = this.makeHarmoniser(strip);
+    if (strip.harmony) {
+      const steps = harmony ? harmonySteps(harmony.style) : [];
+      // Each added voice a little quieter when there are two, so the whole stays about as loud.
+      const each = harmony ? (0.9 * harmony.amount) / Math.sqrt(steps.length) : 0;
+      for (const [step, level] of strip.harmony.voices) this.set(level.gain, steps.includes(step) ? each : 0, atOnce);
+    }
     if (e.chorus > 0 && !strip.wobble) strip.wobble = this.makeWobble(strip);
     if (strip.wobble) {
       this.set(strip.wobble.wet.gain, 0.45 * e.chorus, atOnce);
@@ -425,12 +507,37 @@ export class Mixer {
           strip.chop.gain.linearRampToValueAtTime(floor, t + step * CHOP_OPEN_SHARE + edge);
         }
       }
-      if (trackHasSweeps(song, track.id)) {
-        const a = sweepAt(song, track.id, from, clipBeats) ?? e.filter.cutoff;
-        const b = sweepAt(song, track.id, to - 1e-6, clipBeats) ?? e.filter.cutoff;
-        const start = Math.max(timeOf(from), now);
-        strip.filter.frequency.setValueAtTime(this.hz(a), start);
-        strip.filter.frequency.exponentialRampToValueAtTime(this.hz(b), Math.max(timeOf(to), start + 0.001));
+      const start = Math.max(timeOf(from), now);
+      const end = Math.max(timeOf(to), start + 0.001);
+      /** Book a line's corners between the two beats on a setting: straight (or, for pitch-like settings, even-in-pitch) lines between them. */
+      const follow = (param: AudioParam, corners: AutoPoint[], map: (value: number) => number, exponential = false) => {
+        param.setValueAtTime(map(corners[0].value), start);
+        for (const c of corners.slice(1)) {
+          const t = Math.max(timeOf(c.beat), start + 0.001);
+          if (exponential) param.exponentialRampToValueAtTime(map(c.value), Math.min(t, end));
+          else param.linearRampToValueAtTime(map(c.value), Math.min(t, end));
+        }
+      };
+      // The volume line takes the place of the track's own volume while it plays.
+      const volume = lineOf(track, "volume");
+      if (volume) {
+        const own = Math.max(volumeToGain(track.volume), 1e-4);
+        follow(strip.auto.gain, lineBetween(volume, from, to), (v) => Math.min(16, volumeValueGain(v) / own));
+      }
+      const pan = lineOf(track, "pan");
+      if (pan) follow(strip.pan.pan, lineBetween(pan, from, to), (v) => v * 2 - 1);
+      // The filter: a clip's sweep where there is one, else the filter line, else where the track has it.
+      const filterLine = lineOf(track, "filter");
+      if (filterLine || trackHasSweeps(song, track.id)) {
+        const corners = new Set<number>([from, to]);
+        if (filterLine) for (const p of lineBetween(filterLine, from, to)) corners.add(p.beat);
+        for (const c of song.clips) {
+          if (c.trackId !== track.id || !c.sweep) continue;
+          for (const b of [c.start, c.start + clipBeats(c)]) if (b > from && b < to) corners.add(b);
+        }
+        const at = (beat: number) => sweepAt(song, track.id, beat, clipBeats) ?? (filterLine ? valueAt(filterLine, beat) : e.filter.cutoff);
+        const beats = [...corners].sort((x, y) => x - y);
+        follow(strip.filter.frequency, beats.map((beat, i) => ({ beat, value: at(i === beats.length - 1 ? beat - 1e-6 : beat) })), (v) => this.hz(v), true);
       }
     }
   }
@@ -449,12 +556,17 @@ export class Mixer {
       strip.chop.gain.setTargetAtTime(1, now, SMOOTH);
       strip.filter.frequency.cancelScheduledValues(now);
       strip.filter.frequency.setTargetAtTime(this.hz(effectsOf(track).filter.cutoff), now, SMOOTH);
+      strip.auto.gain.cancelScheduledValues(now);
+      strip.auto.gain.setTargetAtTime(1, now, SMOOTH);
+      strip.pan.pan.cancelScheduledValues(now);
+      strip.pan.pan.setTargetAtTime(clamp(track.pan, -1, 1), now, SMOOTH);
     }
   }
 
   private applyTrack(strip: Strip, track: Track, audible: boolean, atOnce: boolean): void {
     this.set(strip.fader.gain, audible ? volumeToGain(track.volume) : 0, atOnce);
-    this.set(strip.pan.pan, clamp(track.pan, -1, 1), atOnce);
+    // While the song plays, a left–right line moves it (scheduleShaping), so the track's own place mustn't fight it.
+    if (!(this.shaping && lineOf(track, "pan"))) this.set(strip.pan.pan, clamp(track.pan, -1, 1), atOnce);
     this.set(strip.reverbSend.gain, sendToGain(track.reverb), atOnce);
     this.set(strip.echoSend.gain, sendToGain(track.echo), atOnce);
   }
@@ -471,7 +583,7 @@ export class Mixer {
       const isNew = !strip;
       if (!strip) this.strips.set(track.id, (strip = this.makeStrip()));
       this.applyTrack(strip, track, audible.has(track.id), isNew);
-      this.applyEffects(strip, effectsOf(track), trackHasSweeps(song, track.id), isNew);
+      this.applyEffects(strip, effectsOf(track), track.harmony, trackHasSweeps(song, track.id) || !!lineOf(track, "filter"), isNew);
     }
     for (const [id, strip] of this.strips) {
       if (song.tracks.some((t) => t.id === id)) continue;
@@ -479,7 +591,7 @@ export class Mixer {
       // Fade it out, then take it apart a moment later, so a track removed while sounding doesn't click.
       strip.fader.gain.setTargetAtTime(0, this.ctx.currentTime, SMOOTH);
       const takeApart = () => {
-        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.lows, strip.highs, strip.filter, strip.pump, strip.chop, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, ...(strip.wobble?.nodes ?? [])]) node.disconnect();
+        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.lows, strip.highs, strip.filter, strip.pump, strip.chop, strip.auto, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, ...(strip.wobble?.nodes ?? []), ...(strip.harmony?.nodes ?? [])]) node.disconnect();
       };
       if (this.meters) setTimeout(takeApart, 150);
       else takeApart();

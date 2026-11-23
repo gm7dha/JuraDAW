@@ -3,7 +3,7 @@
  * wobble, pump) and a clip's volume, fades and filter sweep — their usual
  * values, their limits, and the sums the sound engine and the screens share.
  */
-import { MIN_LENGTH, type Arp, type Clip, type MidiClip, type Note, type Song, type Sweep, type Track, type TrackFilter } from "./types";
+import { MIN_LENGTH, type Arp, type Clip, type Harmony, type HarmonyStyle, type MidiClip, type Note, type Song, type Sweep, type Track, type TrackFilter } from "./types";
 
 /** A track's effects with nothing left out. */
 export interface TrackEffects {
@@ -153,7 +153,7 @@ export function arpNotes(clip: MidiClip, arp: Arp): Omit<Note, "id">[] {
 /** Does the track have any effect of its own switched on? */
 export function hasEffects(track: Track): boolean {
   const e = effectsOf(track);
-  return e.drive > 0 || e.crush > 0 || e.chorus > 0 || e.pump > 0 || e.chop > 0 || e.lows !== 0 || e.highs !== 0 || filterIsOn(e.filter);
+  return e.drive > 0 || e.crush > 0 || e.chorus > 0 || e.pump > 0 || e.chop > 0 || e.lows !== 0 || e.highs !== 0 || filterIsOn(e.filter) || !!track.harmony;
 }
 
 /** The lowest and highest places the filter can cut, in hertz. */
@@ -250,4 +250,38 @@ export const PUMP_SWELL_SHARE = 0.9;
 /** The lowest the pump takes the volume, for an amount 0–1 (1 = right down to a tenth). */
 export function pumpFloor(amount: number): number {
   return 1 - 0.9 * share(amount);
+}
+
+// ── The harmoniser ──
+
+/** The harmoniser's choices: what each is called and the pitches it adds (as how many semitones from the sound). */
+export const HARMONY_STYLES: readonly { style: HarmonyStyle; name: string; steps: readonly number[]; hint: string }[] = [
+  { style: "below", name: "Octave below", steps: [-12], hint: "A deeper voice singing the same tune an octave down" },
+  { style: "fifth", name: "Fifth above", steps: [7], hint: "An open, ringing voice five notes up (a power chord for voices)" },
+  { style: "major", name: "Bright chord", steps: [4, 7], hint: "Two voices above, making a bright (major) chord: best in songs in a major key" },
+  { style: "minor", name: "Dark chord", steps: [3, 7], hint: "Two voices above, making a darker (minor) chord: best in songs in a minor key" },
+  { style: "wide", name: "Below and above", steps: [-12, 12], hint: "An octave down and an octave up at once: a big, stacked sound" },
+];
+
+/** How many times faster a voice the given semitones away plays. */
+export const stepRatio = (semitones: number) => Math.pow(2, semitones / 12);
+
+/** A harmoniser setting made safe, or undefined when it's off. */
+export function cleanHarmony(v: unknown): Harmony | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const h = v as Partial<Harmony>;
+  const amount = share(h.amount);
+  if (amount <= 0) return undefined;
+  const style = HARMONY_STYLES.some((s) => s.style === h.style) ? (h.style as HarmonyStyle) : "below";
+  return { style, amount };
+}
+
+/** The pitches (semitones from the sound) a harmoniser style adds. */
+export function harmonySteps(style: HarmonyStyle): readonly number[] {
+  return (HARMONY_STYLES.find((s) => s.style === style) ?? HARMONY_STYLES[0]).steps;
+}
+
+/** A harmoniser style's name on screen. */
+export function harmonyName(style: HarmonyStyle): string {
+  return (HARMONY_STYLES.find((s) => s.style === style) ?? HARMONY_STYLES[0]).name;
 }

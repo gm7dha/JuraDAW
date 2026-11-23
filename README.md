@@ -7,7 +7,7 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.4 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> **Status: v0.5 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
 > export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today
@@ -35,6 +35,10 @@ it's free.
   stretch it or its middle to slide it along.
 - **The mixer**: every track side by side with its fader, level meter, left–right, **reverb** and **echo**, and a
   Master strip.
+- **Shaping the sound**: each track's own effects (drive, crush, a filter, wobble, pump, bass and treble, chop), an
+  **arpeggiator** and a **harmoniser** (extra voices an octave below, a fifth above or in a chord); each clip's own
+  volume, fades and filter sweep; and **automation** — lines drawn over the song that move a track's volume, filter
+  or left–right as it plays.
 - **The Library**: 35 ready-made drum beats, bass lines, chord sequences and tunes, in any key, to drop in and change
   like any other clip. Listen before you choose. Each goes on a track that suits it (a bass line gets a bass).
 - **Import** sound files (WAV, MP3 and whatever else your browser plays) as clips, and MIDI files as tracks of notes.

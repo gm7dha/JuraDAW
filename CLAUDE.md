@@ -29,7 +29,7 @@
 - State (`src/model/storeApi.ts` — the other model contract — implemented by `src/model/store.ts`, `useStore`): the
   song with undo (`history` past/present/future, `MAX_UNDO` 100), what's selected (`selectedTrackId`,
   `selectedClipIds`, `editingClipId` — the clip in the note editor —, `selectedNoteIds`), `tool`
-  (select/pencil/eraser/scissors), `dialog`, `bottomPanel` (editor/mixer/keys/null), `snap`, toasts, mirrors of the
+  (select/pencil/eraser/scissors), `dialog`, `bottomPanel` (editor/mixer/automation/keys/null), `snap`, toasts, mirrors of the
   engine (`playing`, `recording`, `countingIn`), `cursor` (where Play starts), `metronome`, `countIn`, `fitRequest`.
   Every change goes through `commit` (one undo step); drags use `dragStart`/`dragUpdate(song)`/`dragEnd` so a whole
   drag is one step. `setLoop` is *not* an undo step (undo and redo carry today's loop along, `withLoopOf`).
@@ -78,7 +78,7 @@
 - v0.4: more of the same, also optional and left out when off. Track `lows`/`highs` (−1…1, `tone`, ±`TONE_DB` 12 dB
   shelves at `LOWS_HZ`/`HIGHS_HZ`; "Bass" and "Treble" on screen and to Claude) and `chop` (0–1: each sixteenth open
   for `CHOP_OPEN_SHARE` then cut to `chopFloor`, booked in `scheduleShaping` like the pump); the strip is now input →
-  drive → crush → lows → highs → filter → wobble → pump → chop → fader. Track `arp` {style up/down/updown/random,
+  drive → crush → lows → highs → (harmony voices) → filter → wobble → pump → chop → auto (v0.5) → fader. Track `arp` {style up/down/updown/random,
   rate in beats from `ARP_RATES`, octaves 1–3} (`cleanArp`, `DEFAULT_ARP`): `arpNotes(clip, arp)` (pure, remembered
   per clip object) turns held chords into one note a step — the notes sounding at each step, lowest up, over the
   octaves, the count starting again when the chord changes, "random" the same every time — and `notesBetween` plays
@@ -89,6 +89,29 @@
   its own recipes for some drums and the ordinary kit's for the rest, same keys and names. "bass-808" in
   instruments.ts and `BASS_INSTRUMENTS`. Library: `Beat.kit` (trap on the 808 kit, house/techno/dnb on the
   electronic one), the build-up (`makeBuild`), the 808 bass line; a drum beat goes on any drum kit already there.
+
+- v0.5: automation and the harmoniser, also optional and left out when off. Track `automation?: Automation` —
+  `Partial<Record<AutoParam, AutoPoint[]>>`, `AutoParam` "volume" | "filter" | "pan", points {beat, value 0–1} in
+  order — pure `src/model/automation.ts` (`AUTO_PARAMS`, `AUTO_NAMES`, `MOST_POINTS` 500, `cleanPoints`/
+  `cleanAutomation` (parseSong), `lineOf`, `valueAt` — straight lines, holding the first/last value outside —,
+  `lineBetween`, `withPoint`/`withPointMoved`/`withoutPoint`, `restingValue` (the track's own setting as a value),
+  `volumeValueGain` (the volume slider's curve), `panValueWords`); `edits.setAutomation(song, trackId, param, points |
+  null)` (the field goes with the last line). Values: volume as the slider (0.8 = as made), filter = the cutoff (an
+  automated filter counts as on; a clip's sweep wins over the line while it plays), pan 0 left … 1 right. In sound, a
+  strip's `auto` gain after chop (line ÷ the track's own volume) and its panner, booked per window in
+  `scheduleShaping` (only while playing or in the mixdown — `releaseShaping` puts them back; `applyTrack` leaves the
+  pan alone while a pan line plays). UI: the bottom panel's **Automation** tab (`src/app/AutomationPanel.tsx`: the
+  selected track, Volume/Filter/Left–right, whole song fitted to the width, click adds — the first point also adds
+  the track's own value at the start —, drag moves (one undo step), double-click takes away, Clear line, playhead);
+  `LaneLines` in TracksView draws a track's lines faintly over its lane (an SVG in beats stretched by `--ppb`); the
+  SidePanel's "Draw automation". Claude's tool `set_automation` {track, what, points: [{bar, value}] | null} (volume
+  and filter 0–100, pan −100…100); describe_song says the lines. Track `harmony?: Harmony` {style "below" | "fifth" |
+  "major" | "minor" | "wide", amount 0–1} (`HARMONY_STYLES` with names, steps in semitones and hints; `cleanHarmony`,
+  `harmonySteps`, `stepRatio`): in mixer.ts a lazily made `Harmoniser` taps the strip after `highs` into `filter` —
+  per pitch two delays sliding at `harmonySweep(ratio)` over `HARMONY_WINDOW` (80 ms), half a turn apart, each faded
+  out at its jump (a delay-line pitch shifter: it warbles a little, as they do, and isn't key-aware). SidePanel
+  `HarmonySettings`; add_track/edit_track take `harmoniser` {voices, volume}. Measured in the devkit harness: a line
+  fades, opens the filter and pans; each harmony style puts its energy at the right pitches.
 
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
@@ -232,7 +255,7 @@
   (`server.ts`, the only file using `@modelcontextprotocol/sdk`; stdout is MCP, so it logs to stderr) lets Claude write
   songs with the app's own pure code — no sound in it at all. `tools.ts`: `TOOLS` (format_guide, live_status,
   describe_song, list_instruments, list_library_patterns, new_song, list_songs, open_song, save_song, export_midi,
-  set_song, add_track, edit_track, remove_track, add_clip, add_notes, remove_notes, edit_clip, repeat_clip,
+  set_song, add_track, edit_track, set_automation, remove_track, add_clip, add_notes, remove_notes, edit_clip, repeat_clip,
   remove_clip, insert_library_pattern, undo), `FORMAT_GUIDE` (how songs are described: places in BARS from 1, notes
   in BEATS from their clip's start, pitches as names — C4 is middle C —, numbers or a drum's name; sent as the
   server's instructions too), `callTool` (one call at a time; a refused or cancelled call puts the song back),
@@ -274,7 +297,7 @@
   and 1024 px — at 1280 also with the "Notes on" button showing.
 - Tests (`tests/*.test.ts`, Vitest, pure code only — each file stands alone): time, edits, document (also keep and
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
-  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, their curves and files), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
+  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
   prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
   files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the
@@ -295,7 +318,7 @@
   each), Save → New → Open (the same song back), Open and a dropped file asking first when there are unsaved changes
   (no: the song stays; yes: it opens), a WAV it makes itself imported as a clip (waveform drawn, and inside the saved
   file), a clip renamed on the clip, undo/redo/History, a clip dragged to the edge (the view scrolls), a reload (the
-  song, its sound and the count-in kept in the browser), a pretend MIDI keyboard that the page must not ask the
+  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, a pretend MIDI keyboard that the page must not ask the
   browser for until "Connect a MIDI keyboard" is pressed (and must reconnect by itself after a reload), dark mode,
   Help, What's new, and the bars fitting at 1024 and 1280 px. It fails on any console
   error. It never waits a fixed time: every step waits for what it expects (`until`, `playedPast`), and messages are

@@ -3306,3 +3306,121 @@ button.display-button {
 .field select {
   width: 100%;
 }
+
+/* The Automation tab: lines drawn over the song */
+.auto {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.auto-what button {
+  position: relative;
+}
+
+.auto-has {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+.auto-what button.selected .auto-has {
+  background: currentColor;
+}
+
+.auto-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.auto-sheet {
+  position: relative;
+}
+
+.auto-sheet svg {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.auto-clip {
+  fill: var(--track);
+  opacity: 0.13;
+}
+
+.auto-bar {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.auto-bar-number {
+  fill: var(--ink-3);
+  font-size: 10px;
+}
+
+.auto-middle {
+  stroke: var(--line);
+  stroke-dasharray: 2 4;
+}
+
+.auto-resting {
+  stroke: var(--track);
+  stroke-dasharray: 6 5;
+  opacity: 0.6;
+}
+
+.auto-line {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.auto-point {
+  fill: var(--panel);
+  stroke: var(--track);
+  stroke-width: 2.5;
+  cursor: grab;
+}
+
+.auto-playhead {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.auto-help {
+  flex: none;
+  margin: 0;
+  padding: 4px 10px 6px;
+  border-top: 1px solid var(--line);
+}
+
+/* A track's automation lines, faintly over its lane */
+.lane-lines {
+  position: absolute;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.lane-lines path {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 1.5;
+  opacity: 0.75;
+  vector-effect: non-scaling-stroke;
+}

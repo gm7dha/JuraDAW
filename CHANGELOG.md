@@ -6,6 +6,21 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.5 — Automation and a harmoniser
+
+- **Automation**: a new **Automation** tab under the tracks (next to the Mixer) where you draw lines over the whole
+  song that change a track's **volume**, its **filter** or where it sits between **left and right** as the song
+  plays — a slow fade-out at the end, a filter that opens over eight bars into a chorus, a sound that drifts from
+  one side to the other. Click to add a point, drag a point to move it, double-click one to take it away; **Clear
+  line** takes the whole line off. The lines show faintly over the track in the main view, and the **Draw
+  automation** button in the track's settings opens the tab. Unlike a clip's filter sweep, a line can run across
+  many clips (where a clip has its own sweep, the sweep wins while it plays).
+- **Harmoniser** on every track: extra voices at other pitches that sing (or play) along with it — the stacked-voice
+  sound of Bon Iver on a recorded voice. Choose **Octave below**, **Fifth above**, a **Bright chord** or a **Dark
+  chord** (two voices above, for songs in a major or a minor key) or **Below and above**, and how loud the voices
+  are. The voices keep a fixed distance from the sound, so a chord won't suit every note of every tune.
+- Claude can draw automation lines and use the harmoniser too.
+
 ## v0.4 — Drum machines, arpeggiator and more effects
 
 - **Two new drum kits**: an **808 kit** (the booming kick, snappy snare and ticking hi-hats of trap and hip-hop) and

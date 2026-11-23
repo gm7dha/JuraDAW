@@ -369,6 +369,41 @@ try {
   await page.locator(".track-header .ms-button.solo").nth(0).click();
   expect((await get("s.history.present.tracks[0].solo")) === false, "the track header's S button taking the solo off");
 
+  begin("automation: a volume line drawn, moved, a point taken away, cleared; the harmoniser");
+  await page.locator(".track-header").nth(0).click();
+  await page.locator('.panel-tab:has-text("Automation")').click();
+  await page.waitForSelector(".auto-sheet svg");
+  {
+    const box = await page.locator(".auto-sheet svg").boundingBox();
+    const stepsBefore = await get("s.history.past.length");
+    await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.35);
+    await until("s.history.present.tracks[0].automation?.volume?.length === 2", "a volume line: from the start, to the point clicked");
+    expect((await get("s.history.past.length")) === stepsBefore + 1, "the click one undo step");
+    expect((await page.locator(".lane-lines").count()) === 1, "the line drawn faintly over the track's lane");
+    const before = await get("s.history.present.tracks[0].automation.volume[1]");
+    const point = await page.locator(".auto-point").nth(1).boundingBox();
+    await page.mouse.move(point.x + point.width / 2, point.y + point.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(point.x + 40, point.y + 30, { steps: 4 });
+    await page.mouse.move(point.x + 60, point.y + 50, { steps: 4 });
+    await page.mouse.up();
+    const after = await get("s.history.present.tracks[0].automation.volume[1]");
+    expect(after.beat > before.beat && after.value < before.value, `the point dragged later and lower (${JSON.stringify(before)} → ${JSON.stringify(after)})`);
+    expect((await get("s.history.past.length")) === stepsBefore + 2, "the drag one undo step");
+    const moved = await page.locator(".auto-point").nth(1).boundingBox();
+    await page.mouse.dblclick(moved.x + moved.width / 2, moved.y + moved.height / 2);
+    await until("s.history.present.tracks[0].automation?.volume?.length === 1", "a double-click taking the point away");
+    await page.click('.auto button:has-text("Clear line")');
+    await until("!s.history.present.tracks[0].automation", "Clear line taking the line off");
+    expect((await page.locator(".lane-lines").count()) === 0, "no line over the lane");
+  }
+  await page.locator('.check-row:has-text("Harmoniser") input').click();
+  await until('s.history.present.tracks[0].harmony?.style === "below"', "the harmoniser on (an octave below)");
+  await page.selectOption('select[aria-label="Which voices the harmoniser adds"]', "fifth");
+  await until('s.history.present.tracks[0].harmony?.style === "fifth"', "the harmoniser's voices changed to a fifth above");
+  await page.locator('.check-row:has-text("Harmoniser") input').click();
+  await until("!s.history.present.tracks[0].harmony", "the harmoniser off again");
+
   begin("record notes with the typing keyboard");
   await closeToasts();
   await scrollHome();
