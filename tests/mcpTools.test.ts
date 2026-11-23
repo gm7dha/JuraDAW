@@ -143,6 +143,34 @@ describe("making a song", () => {
 });
 
 describe("shaping the sound", () => {
+  it("switches the harmoniser on, changes it and takes it off", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "choir", name: "Voices", harmoniser: { voices: "minor", volume: 50 } });
+    expect(s.song.tracks[0].harmony).toEqual({ style: "minor", amount: 0.5 });
+    await ok(s, "edit_track", { track: "Voices", harmoniser: { voices: "wide" } });
+    expect(s.song.tracks[0].harmony).toEqual({ style: "wide", amount: 0.5 });
+    expect(await ok(s, "describe_song")).toMatch(/harmoniser wide at 50%/);
+    expect(await bad(s, "edit_track", { track: "Voices", harmoniser: { voices: "sixth" } })).toMatch(/voices/);
+    await ok(s, "edit_track", { track: "Voices", harmoniser: null });
+    expect("harmony" in s.song.tracks[0]).toBe(false);
+  });
+  it("draws, describes and takes off automation lines", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "pad", name: "Pad" });
+    expect(await ok(s, "set_automation", { track: "Pad", what: "volume", points: [{ bar: 1, value: 0 }, { bar: 5, value: 80 }] })).toMatch(/volume line on "Pad" with 2 points/);
+    expect(s.song.tracks[0].automation).toEqual({ volume: [{ beat: 0, value: 0 }, { beat: 16, value: 0.8 }] });
+    await ok(s, "set_automation", { track: "Pad", what: "pan", points: [{ bar: 1.5, value: -100 }, { bar: 3, value: 100 }] });
+    expect(s.song.tracks[0].automation?.pan).toEqual([{ beat: 2, value: 0 }, { beat: 8, value: 1 }]);
+    const look = await ok(s, "describe_song");
+    expect(look).toMatch(/volume line: bar 1 0 → bar 5 80/);
+    expect(look).toMatch(/left–right line: bar 1.5 -100 → bar 3 100/);
+    expect(await bad(s, "set_automation", { track: "Pad", what: "filter", points: [{ bar: 1, value: 120 }] })).toMatch(/value/);
+    expect(await bad(s, "set_automation", { track: "Pad", what: "filter", points: [{ bar: 2, value: 1 }, { bar: 2, value: 5 }] })).toMatch(/same place/);
+    expect(await bad(s, "set_automation", { track: "Pad", what: "loudness", points: null })).toMatch(/what/);
+    await ok(s, "set_automation", { track: "Pad", what: "volume", points: null });
+    await ok(s, "set_automation", { track: "Pad", what: "pan", points: null });
+    expect("automation" in s.song.tracks[0]).toBe(false);
+  });
   it("sets a track's own effects and a clip's volume, fades and filter sweep", async () => {
     const { s } = session();
     await ok(s, "add_track", { instrument: "supersaw", name: "Chords", pump: 60, drive: 20, filter: { kind: "low", cutoff: 70, resonance: 30 } });

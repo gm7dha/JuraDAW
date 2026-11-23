@@ -6,10 +6,11 @@
  * same tools work on the song open there (src/mcp/live.ts).
  */
 import { FILE_EXTENSION, MOST_BEATS, isDrumKit, newSong, newTrack, readSongFile, songFileText, instrumentLabel } from "../model/document";
+import { AUTO_NAMES, AUTO_PARAMS, MOST_POINTS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
-import { ARP_STYLES, arpRateWords, clipGain, effectsOf, filterIsOn } from "../model/shaping";
+import { ARP_STYLES, HARMONY_STYLES, arpRateWords, clipGain, effectsOf, filterIsOn } from "../model/shaping";
 import { DRUM_PITCHES, clipEnd, clipLength, drumName, pitchName, songLength, timeText, beatsToSeconds } from "../model/time";
-import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, type Clip, type MidiClip, type Note, type Song, type Track } from "../model/types";
+import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, type AutoPoint, type Clip, type MidiClip, type Note, type Song, type Track } from "../model/types";
 import { LIBRARY, cleanValues, findPattern, makePattern, patternSuitsInstrument } from "../library/catalogue";
 import { songToMidi } from "../midi/midiFile";
 import { InputError, bool, list, noExtras, num, object, oneOf, optionalNum, r6, text, type Obj } from "./args";
@@ -33,6 +34,8 @@ export const FORMAT_GUIDE = `How JuraDAW songs work:
 - Each track has its own effects, all off unless set (amounts are per cent): "drive" (warmth → grit → fuzz), "crush" (lo-fi, bit-crushed), "bass" and "treble" (−100 to 100: less or more of the low end / top end), "chop" (cuts the sound into sixteenth notes — stutters), "filter" {"kind": "low" (cuts the top: muffled) or "high" (cuts the bottom: thin), "cutoff": 0–100 (where it cuts, from the very bottom to the very top of hearing), "resonance": 0–100 (a ringing edge)}, "wobble" (a slow pitch drift that widens, like worn tape) and "pump" (the volume dips on every beat and swells back, like side-chained dance music) — besides "reverb" and "echo".
 - An instrument track can have an "arpeggiator" {"style": "up" | "down" | "updown" | "random", "rate": "beats" | "eighths" | "triplets" | "sixteenths", "octaves": 1–3}: chords held in its clips are played one note at a time in that pattern (write long held chords; the clip's notes stay as written). null switches it off.
 - Each clip can have its own "volume" (per cent, 100 = as played), "fade_in" and "fade_out" (beats: it swells in / dies away instead of switching on and off) and a "filter_sweep" {"from", "to"} (0–100 as the filter's cutoff): the track's filter moves from one to the other while the clip plays — low to high opens up for a build.
+- Any track can have a "harmoniser" {"voices": "below" | "fifth" | "major" | "minor" | "wide", "volume": 0–100}: copies of its sound at other pitches, a fixed step away, sung along with it — the stacked-voice sound of Bon Iver on a recorded voice, or a big octave sound on a lead. "major" and "minor" add chords, so pick the one that matches the song's key. null switches it off.
+- Automation (set_automation): a line drawn over the song moves a track's "volume", "filter" (its cutoff) or "pan" as the song plays — for a fade-out at the end, a filter opening over a build, or a sound drifting from side to side. Unlike a clip's filter_sweep, a line can cross many clips. A clip's own sweep wins over the filter line while that clip plays.
 - The "sweep" instrument is a rush of noise for builds: a note from C4 up rises and swells for as long as the note lasts (a 4-bar note = a 4-bar build; higher notes end higher); a note below C4 falls and dies away.
 - Drum kits: "drums" (an ordinary kit), "drums-808" (trap and hip-hop: booming kick, snappy snare, ticking hats) and "drums-electro" (house, techno, drum and bass). "bass-808" is the long, gliding bass of trap. The library has trap, house, techno, drum-and-bass and lo-fi beats and a build-up.
 - A recording's clip can be played backwards: "reverse": true in edit_clip.
@@ -171,7 +174,7 @@ function describeNotes(song: Song, clip: MidiClip, most: number): string[] {
 const ARP_RATE_NAMES = { beats: 1, eighths: 0.5, triplets: 1 / 3, sixteenths: 0.25 } as const;
 
 /** A track's own effects in words (nothing when they're all off). */
-function effectsWords(track: Track): string {
+function effectsWords(track: Track, bpb: number): string {
   const e = effectsOf(track);
   const words: string[] = [];
   if (e.drive > 0) words.push(`drive ${pct(e.drive)}`);
@@ -183,6 +186,14 @@ function effectsWords(track: Track): string {
   if (e.highs !== 0) words.push(`treble ${Math.round(e.highs * 100)}`);
   if (e.chop > 0) words.push(`chop ${pct(e.chop)}`);
   if (track.arp) words.push(`arpeggiator ${track.arp.style}, ${arpRateWords(track.arp.rate)}, ${plural(track.arp.octaves, "octave")}`);
+  if (track.harmony) words.push(`harmoniser ${track.harmony.style} at ${pct(track.harmony.amount)}`);
+  for (const p of AUTO_PARAMS) {
+    const line = lineOf(track, p);
+    if (!line) continue;
+    const value = (v: number) => (p === "pan" ? String(Math.round(v * 200 - 100)) : String(Math.round(v * 100)));
+    const shown = line.slice(0, 12).map((pt) => `bar ${r6(pt.beat / bpb) + 1} ${value(pt.value)}`);
+    words.push(`${AUTO_NAMES[p].toLowerCase()} line: ${shown.join(" → ")}${line.length > 12 ? ` … (${line.length} points)` : ""}`);
+  }
   return words.length ? `, ${words.join(", ")}` : "";
 }
 
@@ -216,7 +227,7 @@ export function describeSong(song: Song, opts: { notes?: boolean; only?: Clip } 
     if (opts.only && opts.only.trackId !== t.id) return;
     const pan = Math.abs(t.pan) < 0.005 ? "middle" : `${pct(Math.abs(t.pan))} ${t.pan < 0 ? "left" : "right"}`;
     lines.push(
-      `${i + 1}. "${t.name}" — ${t.kind === "audio" ? "a sound track (recordings)" : `plays ${t.instrument} (${instrumentLabel(t.instrument)})`}; volume ${pct(t.volume)}, ${pan}, reverb ${pct(t.reverb)}, echo ${pct(t.echo)}${effectsWords(t)}${t.mute ? ", MUTED" : ""}${t.solo ? ", SOLO" : ""}`,
+      `${i + 1}. "${t.name}" — ${t.kind === "audio" ? "a sound track (recordings)" : `plays ${t.instrument} (${instrumentLabel(t.instrument)})`}; volume ${pct(t.volume)}, ${pan}, reverb ${pct(t.reverb)}, echo ${pct(t.echo)}${effectsWords(t, song.beatsPerBar)}${t.mute ? ", MUTED" : ""}${t.solo ? ", SOLO" : ""}`,
     );
     const clips = clipsOn(song, t.id);
     if (!clips.length) lines.push("   (no clips)");
@@ -465,11 +476,12 @@ export const TOOLS: ToolDef[] = [
         treble: { type: "number", description: "−100 to 100: less or more of the top end." },
         chop: { type: "number", description: "Per cent, 0–100: cuts the sound into sixteenth notes (stutters)." },
         arpeggiator: { description: 'Chords played one note at a time: {"style": "up" | "down" | "updown" | "random", "rate": "beats" | "eighths" | "triplets" | "sixteenths", "octaves": 1–3}, or null for off.' },
+        harmoniser: { description: 'Extra voices at other pitches along with the track: {"voices": "below" (an octave down) | "fifth" (a fifth up) | "major" (third and fifth up: bright) | "minor" (minor third and fifth up: dark) | "wide" (an octave down and up), "volume": 0–100}, or null for off.' },
       },
       required: ["instrument"],
     },
     run(s, a) {
-      noExtras(a, ["instrument", "name", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator"], "add_track");
+      noExtras(a, ["instrument", "name", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "harmoniser"], "add_track");
       if (s.song.tracks.length >= MOST_TRACKS) throw new InputError(`A song can have at most ${MOST_TRACKS} tracks. Remove one first, or put this part on a track that's there.`);
       const made = newTrack("instrument", instrumentOf(a.instrument, "instrument"), s.song.tracks);
       const patch = trackPatch(a, "add_track");
@@ -483,7 +495,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "edit_track",
     title: "Change a track",
-    description: "Change a track's name, instrument, volume, left–right, reverb, echo, its own effects (drive, crush, filter, wobble, pump), mute or solo.",
+    description: "Change a track's name, instrument, volume, left–right, reverb, echo, its own effects (drive, crush, filter, wobble, pump, bass, treble, chop), arpeggiator, harmoniser, mute or solo.",
     inputSchema: {
       type: "object",
       properties: {
@@ -503,13 +515,14 @@ export const TOOLS: ToolDef[] = [
         treble: { type: "number", description: "−100 to 100: less or more of the top end." },
         chop: { type: "number", description: "Per cent, 0–100: cuts the sound into sixteenth notes (stutters)." },
         arpeggiator: { description: 'Chords played one note at a time: {"style": "up" | "down" | "updown" | "random", "rate": "beats" | "eighths" | "triplets" | "sixteenths", "octaves": 1–3}, or null for off.' },
+        harmoniser: { description: 'Extra voices at other pitches along with the track: {"voices": "below" (an octave down) | "fifth" (a fifth up) | "major" (third and fifth up: bright) | "minor" (minor third and fifth up: dark) | "wide" (an octave down and up), "volume": 0–100}, or null for off.' },
         mute: { type: "boolean" },
         solo: { type: "boolean" },
       },
       required: ["track"],
     },
     run(s, a) {
-      noExtras(a, ["track", "name", "instrument", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "mute", "solo"], "edit_track");
+      noExtras(a, ["track", "name", "instrument", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "harmoniser", "mute", "solo"], "edit_track");
       const track = trackOf(s.song, a.track, "edit_track");
       const patch: edits.TrackPatch = trackPatch(a, "edit_track");
       if (a.instrument !== undefined) {
@@ -522,6 +535,42 @@ export const TOOLS: ToolDef[] = [
       if (!s.commit(edits.updateTrack(s.song, track.id, patch))) return say(`Nothing was changed: "${track.name}" is like that already.`);
       const now = s.song.tracks.find((t) => t.id === track.id);
       return say(`Changed "${track.name}"${now && now.name !== track.name ? ` (now "${now.name}")` : ""}.`);
+    },
+  },
+  {
+    name: "set_automation",
+    title: "Draw an automation line",
+    description:
+      'Draw a line over the song that changes a track\'s volume, filter cutoff or left–right place as it plays (a fade-out, a filter that opens over 8 bars, a sound drifting left to right). Points are {"bar": 1–…, "value": …}; bar 1.5 is halfway through bar 1; straight lines join them, and before the first and after the last the line holds still. Values: volume 0–100 (80 = the usual), filter 0–100 (as the filter\'s cutoff; the track\'s filter kind decides what it cuts), pan −100 (left) to 100 (right). The line replaces the one already there; "points": null takes it off.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        track: TRACK_REF,
+        what: { type: "string", enum: ["volume", "filter", "pan"] },
+        points: { description: 'A list like [{"bar": 1, "value": 0}, {"bar": 9, "value": 80}], or null to take the line off.' },
+      },
+      required: ["track", "what", "points"],
+    },
+    run(s, a) {
+      noExtras(a, ["track", "what", "points"], "set_automation");
+      const track = trackOf(s.song, a.track, "set_automation");
+      const what = oneOf(a.what, AUTO_PARAMS, "what");
+      const bpb = s.song.beatsPerBar;
+      let points: AutoPoint[] | null = null;
+      if (a.points !== null) {
+        points = list(a.points, "points").map((p, i) => {
+          const o = object(p, `points[${i}]`);
+          noExtras(o, ["bar", "value"], `points[${i}]`);
+          const bar = num(o.bar, `points[${i}].bar`, { min: 1, max: MOST_BEATS / bpb + 1 });
+          const value = num(o.value, `points[${i}].value`, what === "pan" ? { min: -100, max: 100 } : { min: 0, max: 100 });
+          return { beat: r6((bar - 1) * bpb), value: r6(what === "pan" ? (value + 100) / 200 : value / 100) };
+        });
+        if (points.length > MOST_POINTS) throw new InputError(`A line can have at most ${MOST_POINTS} points.`);
+        if (new Set(points.map((p) => p.beat)).size !== points.length) throw new InputError("Two points are on the same place: give each point its own bar.");
+      }
+      const name = AUTO_NAMES[what].toLowerCase();
+      if (!s.commit(edits.setAutomation(s.song, track.id, what, points))) return say(points ? `Nothing was changed: "${track.name}" has that ${name} line already.` : `"${track.name}" has no ${name} line.`);
+      return say(points ? `Drew a ${name} line on "${track.name}" with ${plural(points.length, "point")}.` : `Took the ${name} line off "${track.name}": it's back to its own setting.`);
     },
   },
   {
@@ -832,6 +881,16 @@ function trackPatch(a: Obj, where: string): edits.TrackPatch {
     if (g.rate !== undefined) arp.rate = ARP_RATE_NAMES[oneOf(g.rate, ["beats", "eighths", "triplets", "sixteenths"] as const, `${where}.arpeggiator.rate`)];
     if (g.octaves !== undefined) arp.octaves = num(g.octaves, `${where}.arpeggiator.octaves`, { min: 1, max: 3, integer: true });
     patch.arp = arp;
+  }
+  if (a.harmoniser === null) patch.harmony = null;
+  else if (a.harmoniser !== undefined) {
+    const g = object(a.harmoniser, `${where}.harmoniser`);
+    noExtras(g, ["voices", "volume"], `${where}.harmoniser`);
+    const harmony: NonNullable<edits.TrackPatch["harmony"]> = {};
+    if (g.voices !== undefined) harmony.style = oneOf(g.voices, HARMONY_STYLES.map((h) => h.style), `${where}.harmoniser.voices`);
+    const amount = share(g.volume, `${where}.harmoniser.volume`);
+    if (amount !== undefined) harmony.amount = amount;
+    patch.harmony = harmony;
   }
   if (a.filter !== undefined && a.filter !== null) {
     const f = object(a.filter, `${where}.filter`);

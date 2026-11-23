@@ -87,5 +87,7 @@ files when you Save.
 - **v0.4** — the 808 and electronic drum kits, an 808 bass, trap/house/techno/drum-and-bass/lo-fi beats and a
   build-up in the Library, an arpeggiator on every instrument track, Bass/Treble tone and Chop effects, recordings
   played backwards.
-- **Later** — recent songs, volume changes drawn over time, more effects (EQ, compressor), tempo changes, time-stretching
+- **v0.5** — automation (volume, filter and left–right lines drawn over the song, in their own tab) and a
+  harmoniser on every track.
+- **Later** — recent songs, more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

@@ -4,14 +4,14 @@
  * and the curves the mixer makes from them (src/audio/mixer.ts).
  */
 import { describe, expect, it } from "vitest";
-import { crushCurve, crushSteps, driveCurve, driveTrim, resonanceQ } from "../src/audio/mixer";
+import { crushCurve, crushSteps, driveCurve, driveTrim, harmonySweep, resonanceQ } from "../src/audio/mixer";
 import { INSTRUMENTS } from "../src/audio/instruments";
 import { BASS_INSTRUMENTS, LIBRARY, patternSuitsInstrument } from "../src/library/catalogue";
 import { instrumentLabel, isDrumKit, newSong, newTrack, parseSong, readSongFile, songFileText } from "../src/model/document";
 import { mirroredOffset } from "../src/audio/reverse";
 import { notesBetween } from "../src/audio/schedule";
 import * as edits from "../src/model/edits";
-import { CUTOFF_HIGH_HZ, CUTOFF_LOW_HZ, DEFAULT_ARP, arpNotes, chopFloor, cleanArp, toneWords, clipFades, clipGain, clipIsShaped, clipLevelAt, clipLevelPoints, cleanFilter, cutoffHz, effectsOf, filterIsOn, hasEffects, hzText, pumpFloor, sweepAt, trackHasSweeps } from "../src/model/shaping";
+import { CUTOFF_HIGH_HZ, CUTOFF_LOW_HZ, DEFAULT_ARP, cleanHarmony, harmonySteps, stepRatio, arpNotes, chopFloor, cleanArp, toneWords, clipFades, clipGain, clipIsShaped, clipLevelAt, clipLevelPoints, cleanFilter, cutoffHz, effectsOf, filterIsOn, hasEffects, hzText, pumpFloor, sweepAt, trackHasSweeps } from "../src/model/shaping";
 import type { MidiClip, Song } from "../src/model/types";
 
 function songWith(): { song: Song; track: string; clip: string } {
@@ -326,5 +326,41 @@ describe("the drum kits", () => {
     expect(LIBRARY.find((p) => p.id === "drums-trap")?.instrument).toBe("drums-808");
     expect(LIBRARY.find((p) => p.id === "bass-808")?.instrument).toBe("bass-808");
     expect(patternSuitsInstrument(LIBRARY.find((p) => p.id === "bass-808")!, "bass-808")).toBe(true);
+  });
+});
+
+describe("the harmoniser", () => {
+  it("is off on a new track, switched on and changed a part at a time, and off again", () => {
+    const { song, track } = songWith();
+    expect("harmony" in trackOf(song, track)).toBe(false);
+    const on = edits.updateTrack(song, track, { harmony: { style: "fifth" } });
+    expect(trackOf(on, track).harmony).toEqual({ style: "fifth", amount: 0.5 });
+    expect(edits.updateTrack(on, track, { harmony: { style: "fifth" } })).toBe(on);
+    expect(trackOf(edits.updateTrack(on, track, { harmony: { amount: 0.8 } }), track).harmony).toEqual({ style: "fifth", amount: 0.8 });
+    expect("harmony" in trackOf(edits.updateTrack(on, track, { harmony: { amount: 0 } }), track)).toBe(false);
+    expect("harmony" in trackOf(edits.updateTrack(on, track, { harmony: null }), track)).toBe(false);
+    expect(hasEffects(trackOf(on, track))).toBe(true);
+  });
+  it("has voices a fixed step from the sound", () => {
+    expect(harmonySteps("below")).toEqual([-12]);
+    expect(harmonySteps("major")).toEqual([4, 7]);
+    expect(harmonySteps("minor")).toEqual([3, 7]);
+    expect(stepRatio(12)).toBeCloseTo(2);
+    expect(stepRatio(-12)).toBeCloseTo(0.5);
+    expect(stepRatio(7)).toBeCloseTo(1.4983);
+  });
+  it("slides each voice's delay the right way and speed", () => {
+    // An octave down: the delay lengthens by half a second every second.
+    expect(harmonySweep(0.5, 0.1)).toEqual({ rate: 5, sign: 1 });
+    // An octave up: it shortens by a second every second.
+    expect(harmonySweep(2, 0.1)).toEqual({ rate: 10, sign: -1 });
+  });
+  it("is saved and read back carefully", () => {
+    const { song, track } = songWith();
+    const s = edits.updateTrack(song, track, { harmony: { style: "wide", amount: 0.7 } });
+    expect(parseSong(JSON.parse(songFileText(s)).song)!.tracks[0].harmony).toEqual({ style: "wide", amount: 0.7 });
+    expect(cleanHarmony({ style: "sixth", amount: 3 })).toEqual({ style: "below", amount: 1 });
+    expect(cleanHarmony({ style: "fifth", amount: 0 })).toBeUndefined();
+    expect(cleanHarmony("loud")).toBeUndefined();
   });
 });

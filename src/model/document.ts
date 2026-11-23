@@ -4,7 +4,8 @@
  * file — the song plus its sounds as base64 WAV. Pure: works in Node and in
  * the browser.
  */
-import { cleanArp, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
+import { cleanAutomation } from "./automation";
+import { cleanArp, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, TRACK_COLOURS } from "./types";
 import type { AudioClip, AudioInfo, Clip, Loop, MidiClip, Note, Song, Track, TrackKind } from "./types";
 
@@ -183,8 +184,9 @@ function parseTrack(v: unknown, taken: Set<string>, before: readonly Track[]): T
 }
 
 /** A track's own effects from a file: only the ones that are switched on are kept. */
-function parseEffects(v: Record<string, unknown>): Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp"> {
-  const out: Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp"> = {};
+type Extras = "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp" | "automation" | "harmony";
+function parseEffects(v: Record<string, unknown>): Pick<Track, Extras> {
+  const out: Pick<Track, Extras> = {};
   for (const key of ["lows", "highs"] as const) {
     const amount = tone(v[key]);
     if (amount !== 0) out[key] = amount;
@@ -193,6 +195,10 @@ function parseEffects(v: Record<string, unknown>): Pick<Track, "drive" | "crush"
     const arp = cleanArp(v.arp);
     if (arp) out.arp = arp;
   }
+  const harmony = cleanHarmony(v.harmony);
+  if (harmony) out.harmony = harmony;
+  const automation = cleanAutomation(v.automation);
+  if (automation) out.automation = automation;
   for (const key of ["drive", "crush", "chorus", "pump", "chop"] as const) {
     const amount = within(v[key], 0, 1, 0);
     if (amount > 0) out[key] = amount;

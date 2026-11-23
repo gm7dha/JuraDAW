@@ -11,7 +11,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useStore } from "../model/store";
-import type { Clip, Song, Track } from "../model/types";
+import { AUTO_PARAMS } from "../model/automation";
+import type { AutoPoint, Clip, Song, Track } from "../model/types";
 import { addTrackOf, NEW_TRACKS } from "./addTracks";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useEdgeScroll, type PointerPlace } from "./edgeScroll";
@@ -596,6 +597,7 @@ function Timeline() {
             {song.tracks.map((t, i) => (
               <div key={t.id} className={`lane${t.id === selectedTrackId ? " selected" : ""}`} style={{ top: i * ROW_H, height: ROW_H }} />
             ))}
+            {song.tracks.map((t, i) => (t.automation ? <LaneLines key={`lines-${t.id}`} track={t} top={i * ROW_H} /> : null))}
             {visible.map((c) => {
               const row = rowOf.get(c.trackId);
               const track = row === undefined ? undefined : song.tracks[row];
@@ -805,3 +807,21 @@ function WavePicture({ audioId, offset, duration, reverse, width, version }: { a
     </svg>
   );
 }
+
+/**
+ * A track's automation lines, drawn faintly across its lane so it can be seen that something moves there.
+ * Drawn in beats and stretched by the lanes' --ppb, so zooming doesn't draw it again.
+ */
+const LaneLines = memo(function LaneLines({ track, top }: { track: Track; top: number }) {
+  const lines = AUTO_PARAMS.map((p) => track.automation?.[p]).filter((l): l is AutoPoint[] => !!l && l.length > 0);
+  const end = Math.max(...lines.map((l) => l[l.length - 1].beat)) + 1;
+  const h = ROW_H - 10;
+  const d = lines
+    .map((l) => [{ beat: 0, value: l[0].value }, ...l, { beat: end, value: l[l.length - 1].value }].map((p, i) => `${i ? "L" : "M"}${p.beat},${((1 - p.value) * h).toFixed(2)}`).join(""))
+    .join("");
+  return (
+    <svg className="lane-lines" style={{ top: top + 5, height: h, width: `calc(var(--ppb) * ${end}px)`, ["--track" as string]: track.colour }} viewBox={`0 0 ${end} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+});
