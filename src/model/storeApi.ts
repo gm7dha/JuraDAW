@@ -142,6 +142,14 @@ export interface State {
   /** Put a ready-made pattern (src/library) in the song at the cursor: on the selected track if it suits, else a new track. */
   addFromLibrary: (id: string, options?: Record<string, number | string>) => void;
 
+  // ── Live with Claude ──
+  /**
+   * Take a change Claude made through the live link as ONE undo step (with a message saying what it was).
+   * `replace` = a whole new song (Claude started or opened one): the selection and the file name are let go.
+   * Returns what's wrong in words, or null when it's done.
+   */
+  applyClaudeChange: (song: Song, label: string, replace: boolean) => string | null;
+
   // ── app ──
   setTool: (tool: Tool) => void;
   openDialog: (dialog: DialogName) => void;

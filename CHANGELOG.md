@@ -6,6 +6,20 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.2 — Make music with Claude
+
+- **Use JuraDAW with Claude**: a free extension for the Claude desktop app (Help › Use JuraDAW with Claude: one file
+  to download and double-click). Describe some music in plain English — "a slow blues in A with drums, a walking
+  bass and piano chords" — and Claude writes it a part at a time: tracks, clips and notes you can see, play and
+  change. It can use every pattern in the Library, in any key, sets the tempo and the mix, and saves a `.juradaw`
+  song (or a MIDI file) in your Documents › JuraDAW folder.
+- **Live with Claude**: click **Connect to Claude** in the top bar and Claude works on the song you have open, while
+  you watch and listen. Each of its changes is one step you can undo, and you can keep working too — if you both
+  change something at the same moment, Claude's change is turned back and it tries again, so nothing is lost. It
+  waits while you're recording or have the Library or Export open. The link stays on your computer; only the JuraDAW
+  website can use it. Works in Chrome, Edge and Firefox, and in Safari through a small link window.
+- Claude works with notes: recording a voice or an instrument, and saving a sound file, are still done in JuraDAW.
+
 ## v0.1 — The first version
 
 - **Tracks**: as many as 32, each an instrument to play or a track for recorded sound, with its own colour, volume,

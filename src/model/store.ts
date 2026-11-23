@@ -18,7 +18,7 @@ import { findPattern, makePattern, patternSuitsInstrument } from "../library/pat
 import { copyClips, copyNotes, notesPastePlace, pasteClips, pasteNotes, type Clipboard } from "./clipboard";
 import { DEFAULT_INSTRUMENT, MOST_CLIPS, MOST_NOTES, newSong, newTrack } from "./document";
 import * as edits from "./edits";
-import { EPS, barIndex, clipEnd, r6, secondsToBeats, snapBeat } from "./time";
+import { EPS, barIndex, clipEnd, r6, secondsToBeats, snapBeat, songLength } from "./time";
 import type { State, Toast } from "./storeApi";
 import { MOST_TRACKS, type Clip, type MidiClip, type Note, type Song, type Track } from "./types";
 
@@ -570,6 +570,26 @@ export const useStore = create<State>()((set, get) => {
       if (start !== wanted) get().toast(`“${pattern.name}” went in at bar ${barIndex(start, next.beatsPerBar) + 1}, after what was already on “${track.name}”.`, "info");
       if (pattern.beatsPerBar !== next.beatsPerBar && Math.abs(made.length / next.beatsPerBar - Math.round(made.length / next.beatsPerBar)) > EPS)
         get().toast(`"${pattern.name}" is written with ${pattern.beatsPerBar} beats in a bar; this song has ${next.beatsPerBar}. You can change the song's beats in a bar next to the tempo.`, "info");
+    },
+
+    // ── Live with Claude ──
+    applyClaudeChange(next, label, replace) {
+      if (dragBase) return "The user is in the middle of dragging something in JuraDAW.";
+      const before = song();
+      if (replace) {
+        // A whole new song, as New does it: one undo step that also brings the old file name back.
+        newSongs.set(next, { before: { fileName: get().fileName, savedSong: get().savedSong }, after: { fileName: null, savedSong: null } });
+        get().commit(next);
+        set({ selectedTrackId: next.tracks[0]?.id ?? null, selectedClipIds: EMPTY_IDS, editingClipId: null, selectedNoteIds: EMPTY_IDS, fileName: null, savedSong: null, cursor: 0, fitRequest: get().fitRequest + 1 });
+      } else {
+        get().commit(next);
+        // Show what's new: the track Claude just added becomes the selected one.
+        const added = next.tracks.find((t) => !before.tracks.some((b) => b.id === t.id));
+        if (added) set({ selectedTrackId: added.id });
+        if (songLength(next) > songLength(before) + EPS) set({ fitRequest: get().fitRequest + 1 });
+      }
+      get().toast(label, "info");
+      return null;
     },
 
     // ── app ──

@@ -7,8 +7,8 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.1 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
-> export the song as a sound file. See the [roadmap](docs/DESIGN.md#roadmap).
+> **Status: v0.2 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today
 
@@ -44,6 +44,20 @@ it's free.
 - **Save** to a `.juradaw` file, which holds the song and its recordings in one file, and open it later (or drag it
   onto the window). Your latest work is also kept in the browser. **Install it as an app** (Chrome/Edge) so it opens
   in its own window and works offline. Light and dark.
+
+## Make music with Claude
+
+JuraDAW comes with a free extension for the [Claude desktop app](https://claude.ai/download). Describe some music in
+plain English — "a slow blues in A with drums, a walking bass and piano chords" — and Claude writes it a part at a
+time, as tracks, clips and notes you can see, play and change.
+
+1. In JuraDAW, open **Help › Use JuraDAW with Claude** and download the extension (one file, `juradaw-claude.mcpb`).
+2. Double-click it (or drag it onto Claude's window) and click Install.
+3. Start a new chat in Claude and ask for a song. Songs are saved in Documents › JuraDAW; open them here with Open.
+
+**Live with Claude**: click **Connect to Claude** in JuraDAW's top bar and Claude works on the song you have open,
+while you watch and listen. Each of its changes is one step you can undo. The link stays on your computer and only
+the JuraDAW website can use it. Claude works with notes; recording sound and saving a sound file are done in JuraDAW.
 
 ## Finding your way round
 
@@ -82,4 +96,6 @@ npm run smoke      # drives the build in headless Chromium
 ## Licence
 
 JuraDAW is MIT licensed (see [LICENSE](LICENSE)). It uses [React](https://react.dev) (MIT) and
-[Zustand](https://github.com/pmndrs/zustand) (MIT), and ships no sound samples or fonts of anyone else's.
+[Zustand](https://github.com/pmndrs/zustand) (MIT), and ships no sound samples or fonts of anyone else's. The
+extension for Claude also bundles the [Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk)
+(MIT) and what it needs; their licences are in the extension's THIRD-PARTY-NOTICES.txt.

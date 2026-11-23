@@ -57,11 +57,17 @@ src/audio     engineApi.ts (the interface), engine.ts (ties the parts together),
               render.ts (mixdown), shared.ts
 src/app       React: App, TopBar, Toolbar (tools, transport, display), SidePanel (on the left: the selection's
               settings), TracksView + TrackHeader + Welcome, BottomPanel with PianoRoll, Mixer and Keys, LibraryDialog,
-              ExportDialog, HelpDialog, WhatsNewDialog, HistoryMenu, ContextMenu, MenuButton, Modal, Slider, NumberBox,
+              ExportDialog, HelpDialog, WhatsNewDialog, LiveButton (Connect to Claude; liveLink.ts wires it), HistoryMenu, ContextMenu, MenuButton, Modal, Slider, NumberBox,
               icons; and outside React: engineApp.ts (store ↔ engine glue), fileActions.ts, songUi.ts (pure: snap,
               words, songs changed by drags), zoom.ts, edgeScroll.ts, keysState.ts, addTracks.ts, prefs.ts, theme.ts,
               install.ts, platform.ts, popupGuard.ts, download.ts
-tests         Vitest, pure code only;  scripts/smoke-test.mjs drives the built app in headless Chromium
+src/mcp       JuraDAW for Claude, an extension for the Claude desktop app: server.ts (MCP), tools.ts (what Claude can
+              do, over src/model/edits.ts), session.ts, args.ts, toolKit.ts, files.ts (its one folder), live.ts and
+              websocket.ts (the extension's end of the live link)
+src/live      Live with Claude, shared by the app and the extension: protocol.ts (messages and rules, pure), client.ts
+              (the app's end), relayTransport.ts + relayPage.ts (Safari's link window)
+tests         Vitest (pure code, and the extension with Node's own files and sockets);  scripts/smoke-test.mjs drives
+              the built app in headless Chromium;  scripts/build- and check-claude-extension.mjs make and try the extension
 ```
 
 Everything outside the React components of `src/app` and the Web Audio parts of `src/audio` is pure and tested. The
@@ -73,5 +79,7 @@ files when you Save.
 - **v0.1** — tracks, built-in instruments and drums, piano roll, audio recording and import, mixer (volume, pan, mute,
   solo, reverb, echo), loop, metronome, library of patterns, MIDI keyboard input, save/open, WAV and MIDI export,
   install, light/dark.
+- **v0.2** — JuraDAW for Claude: an extension for the Claude desktop app that writes songs with the app's own code,
+  and Live with Claude (Claude works on the song open in the tab), both as JuraCAD's.
 - **Later** — recent songs, volume changes over time, more effects (EQ, compressor), tempo changes, time-stretching
-  audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT and a Claude connection like JuraCAD's.
+  audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

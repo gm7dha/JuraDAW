@@ -19,7 +19,9 @@
  */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { chromium } from "playwright";
 
@@ -120,7 +122,9 @@ const begin = (name) => {
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
 const errors = [];
-page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+// While connecting to Claude the page tries each of the live link's ports; the browser logs every one nobody is listening on.
+const liveProbeRefused = (e) => /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:476(3[5-9]|4[0-4])\/juradaw-live' failed: .*net::ERR_CONNECTION_REFUSED/.test(e);
+page.on("console", (m) => m.type() === "error" && !liveProbeRefused(m.text()) && errors.push(m.text()));
 page.on("pageerror", (e) => errors.push(String(e)));
 
 const expect = (ok, what) => {
@@ -669,9 +673,111 @@ try {
     "every toolbar button inside the toolbar",
   );
 
+  begin("Connect to Claude with no extension running says what to do");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await closeToasts();
+  await page.getByRole("button", { name: "Connect to Claude" }).click();
+  await page.waitForSelector(".modal:has-text(\"Claude isn't connected\")", { timeout: 60_000 });
+  expect((await page.locator(".modal .help-steps li").count()) >= 3, "advice on what to do when Claude isn't there");
+  await page.keyboard.press("Escape");
+
+  // With the extension built (CI builds it before this test): start it the way Claude does, connect, and let
+  // "Claude" (this test, talking MCP to it) write some music, which must appear in the open song.
+  const extensionServer = "build/claude-extension/server/index.mjs";
+  let liveReport = "the Claude extension wasn't built, so the live link wasn't tried";
+  if (existsSync(extensionServer)) {
+    begin("Live with Claude: Claude writes into the open song");
+    const songs = mkdtempSync(join(tmpdir(), "juradaw-smoke-live-"));
+    // JURADAW_LIVE_DEV=1: this test serves JuraDAW from 127.0.0.1, which the shipped extension otherwise turns away.
+    const ext = spawn(process.execPath, [extensionServer, songs], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, JURADAW_LIVE_DEV: "1" } });
+    let extLog = "";
+    ext.stderr.on("data", (d) => (extLog += d));
+    const replies = new Map();
+    let pending = "";
+    ext.stdout.on("data", (d) => {
+      pending += d;
+      let nl;
+      while ((nl = pending.indexOf("\n")) >= 0) {
+        const line = pending.slice(0, nl).trim();
+        pending = pending.slice(nl + 1);
+        if (line) {
+          const msg = JSON.parse(line);
+          replies.get(msg.id)?.(msg);
+        }
+      }
+    });
+    let nextId = 1;
+    const mcp = (method, params) =>
+      new Promise((resolve, reject) => {
+        const id = nextId++;
+        const timer = setTimeout(() => reject(new Error(`The extension didn't answer ${method}\n${extLog.slice(-1500)}`)), 60_000);
+        replies.set(id, (m) => {
+          clearTimeout(timer);
+          resolve(m);
+        });
+        ext.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      });
+    const tool = async (name, args = {}) => {
+      const r = await mcp("tools/call", { name, arguments: args });
+      const text = (r.result?.content ?? []).map((c) => c.text).join("\n");
+      return { text, failed: !!(r.error || r.result?.isError) };
+    };
+    const done = async (name, args) => {
+      const r = await tool(name, args);
+      if (r.failed) throw new Error(`${name} failed: ${r.text}`);
+      return r.text;
+    };
+    try {
+      await mcp("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "smoke", version: "1" } });
+      ext.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+      for (let i = 0; i < 100 && !/Live link ready/.test(extLog); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(/Live link ready/.test(extLog), `the extension's live link starting:\n${extLog.slice(-1500)}`);
+      await page.getByRole("button", { name: "Connect to Claude" }).click();
+      await page.locator(".live-badge").waitFor({ timeout: 30_000 });
+      const tracksBefore = await get("s.history.present.tracks.length");
+      const stepsBefore = await get("s.history.past.length");
+      const songName = await get("s.history.present.name");
+      expect((await done("describe_song")).includes(`Song "${songName}"`), "Claude seeing the song that's open in the tab");
+      const said = await done("add_track", { instrument: "bells", name: "From Claude" });
+      expect(/Live: this now shows in the user's open JuraDAW tab/.test(said), `Claude being told its change is on show:\n${said}`);
+      await until(`s.history.present.tracks.length === ${tracksBefore + 1}`, "Claude's track appearing in the song");
+      await page.waitForSelector(".track-header:has-text('From Claude')");
+      await done("add_clip", { track: "From Claude", notes: [{ pitch: "C5", start: 0 }, { pitch: "E5", start: 1 }, { pitch: "G5", start: 2, length: 2 }] });
+      await until("s.history.present.clips.some((c) => c.name === 'From Claude' && c.notes.length === 3)", "Claude's clip and its three notes");
+      expect((await get("s.history.past.length")) === stepsBefore + 2, "each of Claude's changes being one undo step");
+      await page.waitForSelector(".toast:has-text('Claude:')");
+      await closeToasts();
+      // The user undoes Claude's clip; Claude sees the song as it now is, and its next change goes on top.
+      await page.keyboard.press("Control+z");
+      await until("!s.history.present.clips.some((c) => c.name === 'From Claude')", "undo taking Claude's clip away");
+      for (let i = 0; i < 50 && !/"From Claude"[^\n]*\n {3}\(no clips\)/.test(await done("describe_song")); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(/"From Claude"[^\n]*\n {3}\(no clips\)/.test(await done("describe_song")), "Claude seeing that its clip was undone");
+      // With the Library open Claude waits: its change is turned back and nothing is lost.
+      await toolbarButton("Library").click();
+      await page.waitForSelector(".modal");
+      const refused = await tool("set_song", { tempo: 97 });
+      expect(refused.failed && /Library open/.test(refused.text), `Claude's change being turned back while the Library is open:\n${refused.text}`);
+      await page.keyboard.press("Escape");
+      await until("s.dialog === null", "the Library closing");
+      await done("set_song", { tempo: 97 });
+      await until("s.history.present.bpm === 97", "Claude's tempo");
+      await closeToasts();
+      // Disconnect from the badge.
+      await page.locator(".live-badge").click();
+      await page.click(".modal button:has-text('Disconnect')");
+      await page.getByRole("button", { name: "Connect to Claude" }).waitFor();
+      for (let i = 0; i < 50 && !/Live: not connected/.test(await done("live_status")); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(/Live: not connected/.test(await done("live_status")), "the extension knowing the tab has gone");
+      liveReport = "Claude (the real extension over the local link) added a track and notes to the open song, saw an undo, waited while the Library was open, and was disconnected";
+    } finally {
+      ext.kill();
+      rmSync(songs, { recursive: true, force: true });
+    }
+  }
+
   if (process.env.SMOKE_SCREENSHOT === "1") await page.screenshot({ path: join(dist, "smoke.png") });
   if (errors.length) throw new Error(`Console errors:\n${errors.join("\n")}`);
-  annotate("notice", "Smoke test", "Made a song with notes, a drum beat and a recording; played and looped it; exported WAV and MIDI; saved, opened, imported, undid: all fine.");
+  annotate("notice", "Smoke test", "Made a song with notes, a drum beat and a recording; played and looped it; exported WAV and MIDI; saved, opened, imported, undid: all fine. Live with Claude: " + liveReport + ".");
 } catch (e) {
   annotate("error", `Smoke test failed at "${step}"`, `${e instanceof Error ? e.message : e}${errors.length ? `\nConsole errors:\n${errors.join("\n")}` : ""}`);
   await page.screenshot({ path: join(dist, "smoke-failure.png") }).catch(() => {});

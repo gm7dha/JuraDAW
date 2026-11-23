@@ -185,6 +185,44 @@
   and bar numbers to draw at a zoom — and `visibleBeats`), `edgeScroll.ts` (`useEdgeScroll`: a drag held at the view's edge scrolls it and
   the drag catches up through its own move handler; pure `edgeSpeed`), `prefs.ts`, `theme.ts`, `install.ts` (also
   opens a double-clicked .juradaw once installed), `platform.ts`, `download.ts`.
+- JuraDAW for Claude (`src/mcp/`, as JuraCAD's — copy how it's done there; the link code in `src/live/`,
+  `src/mcp/websocket.ts` and `files.ts` IS JuraCAD's with the names changed, so a fix in one belongs in the other):
+  an extension for the Claude desktop app (an .mcpb bundle; `claude-extension/manifest.json`) whose MCP server
+  (`server.ts`, the only file using `@modelcontextprotocol/sdk`; stdout is MCP, so it logs to stderr) lets Claude write
+  songs with the app's own pure code — no sound in it at all. `tools.ts`: `TOOLS` (format_guide, live_status,
+  describe_song, list_instruments, list_library_patterns, new_song, list_songs, open_song, save_song, export_midi,
+  set_song, add_track, edit_track, remove_track, add_clip, add_notes, remove_notes, edit_clip, repeat_clip,
+  remove_clip, insert_library_pattern, undo), `FORMAT_GUIDE` (how songs are described: places in BARS from 1, notes
+  in BEATS from their clip's start, pitches as names — C4 is middle C —, numbers or a drum's name; sent as the
+  server's instructions too), `callTool` (one call at a time; a refused or cancelled call puts the song back),
+  `describeSong`, `pitchOf`, `notesOf`, `trackOf`, `clipOf` (a clip by id, name, or its number on a track);
+  `INSTRUMENT_IDS` must match `INSTRUMENTS` (tests/mcpTools checks). Every tool changes the song through
+  `src/model/edits.ts` and **never puts a clip on top of another** (`needRoom` says where there's room).
+  `session.ts` (the song, Claude's own undo list, the file, the sounds of an opened file so saving keeps them),
+  `args.ts` (checks with plain-English messages — `InputError` is shown to Claude as it is), `toolKit.ts`, `files.ts`
+  (`SongFolder`: the one folder it may read and write, Documents/JuraDAW unless chosen; plain names only, no links).
+  CI: `scripts/build-claude-extension.mjs` bundles it with esbuild, `mcpb validate`/`pack` (pinned devDependencies)
+  make `dist/juradaw-claude.mcpb` (downloaded from Help), and `scripts/check-claude-extension.mjs` unpacks it, starts
+  it and writes a song over MCP, cancels a call, and talks to the live link as a tab would. Locally, with esbuild and
+  a stand-in SDK, both scripts run too (`node scripts/check-claude-extension.mjs build/claude-extension`).
+- Live with Claude (Claude works on the song open in the user's tab): the extension also listens on 127.0.0.1 only,
+  on the first free port of `LIVE_PORTS` **47635–47644** (JuraCAD's are 47615–47624: both extensions may be running,
+  and both sites are pages of gm7dha.github.io, the one origin the link lets in — localhost only with
+  `JURADAW_LIVE_DEV=1`, which the smoke test sets), path `/juradaw-live`, sub-protocol `juradaw-live.1`.
+  `src/live/protocol.ts` (pure, shared: the messages — hello/doc/applied/refused from the tab, welcome/busy/change/
+  error from the extension — and the rules), `src/live/client.ts` (`LiveClient`: connects only when "Connect to
+  Claude" is clicked, links EVERY chat's extension and looks for new ones), `relayTransport.ts` + `relayPage.ts`
+  (Safari can't open ws://127.0.0.1 from https, so there the link goes through a small window the extension serves;
+  `?liveRelay` forces that way), `src/mcp/live.ts` (`LiveBridge`: the extension's side; `describeChange` words the
+  undo step from `changeLabel`). The tab sends the song as .juradaw text **without its sounds** (recordings stay in
+  the tab; `open_song` over the link leaves audio clips out and says so) with a version number on connect and after
+  every change; Claude's change comes back based on version N and the tab takes it — `store.applyClaudeChange(song,
+  label, replace)`: ONE undo step, a "Claude: …" message, a new track selected — only if it's still at N and the
+  user isn't recording or in the Library or Export window (`busy` in `src/app/liveLink.ts`), else it's refused,
+  rolled back in the session and Claude is told to look again: nothing is merged silently. `src/app/LiveButton.tsx`
+  is the top-bar control ("Claude" under 1440 px). Tests: liveProtocol, liveRelay (with tests/support/relaySim.ts),
+  liveLink (the real server, the real client over Node's WebSocket, the real tools), mcpTools; the smoke test starts
+  the built extension and lets it write into the open song.
 - Help's surprise (the same in JuraCAD, JuraCUT and JuraDAW — keep them alike, and don't list it in CHANGELOG.md or
   the README: it's a secret): the Windows / Mac buttons clicked 10 times within 5 seconds show `public/easter-egg.jpg`
   (`src/app/easterEgg.ts` pure `eggClick`, tests/easterEgg; `.easter-egg` in styles.css; a smoke-test step).
@@ -197,8 +235,11 @@
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
   mixer sums), audioWav (WAV and the plucked string), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
-  prefs). Pure logic lives outside React and gets a test; the sound itself is checked by the smoke test.
-- Every change: `npm run typecheck && npm test && npm run build && npm run smoke`. CI runs the same and publishes
+  prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
+  files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the
+  smoke test.
+- Every change: `npm run typecheck && npm test && npm run build && npm run smoke`. CI runs the same (and builds,
+  packs and checks the Claude extension before the smoke test) and publishes
   `main` to GitHub Pages (https://gm7dha.github.io/JuraDAW/). The site's path comes from the repository's name
   (`BASE_PATH` in the workflow, read by vite.config.ts and the smoke test).
 - `npm run smoke` (`scripts/smoke-test.mjs`) drives the built app in headless Chromium (`?smoke` exposes
