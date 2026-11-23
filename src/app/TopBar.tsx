@@ -10,6 +10,7 @@ import { MAX_BPM, MIN_BPM } from "../model/types";
 import { SHORT_VERSION } from "../version";
 import { Icons } from "./icons";
 import { importFromFile, newSongAsk, openFromFile, saveToFile } from "./fileActions";
+import { LiveButton } from "./LiveButton";
 import { browserKind, installApp, installSteps, isInstalledApp, useCanInstall } from "./install";
 import { MidiButton } from "./Keys";
 import { Modal } from "./Modal";
@@ -82,6 +83,7 @@ export function TopBar() {
         {fresh && <span className="badge-dot" aria-label="(new)" />}
       </button>
       <div className="topbar-spacer" />
+      <LiveButton />
       {!installed && (
         <button className="text-button" onClick={() => (canInstall ? void installApp() : setInstallHelp(true))} title="Install JuraDAW as an app on this computer — it then opens in its own window and works offline">
           <Icons.Export size={18} style={{ transform: "rotate(180deg)" }} /> <span className="button-label">Install</span>

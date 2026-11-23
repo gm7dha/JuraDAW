@@ -1,0 +1,36 @@
+{
+  "manifest_version": "0.3",
+  "name": "juradaw",
+  "display_name": "JuraDAW",
+  "version": "__VERSION__",
+  "description": "Describe some music in plain English and Claude writes it with JuraDAW — drums, bass, chords and tunes on tracks — then saves a .juradaw song you can open, play and change in JuraDAW.",
+  "long_description": "JuraDAW is a free, open-source music studio in your browser (https://gm7dha.github.io/JuraDAW/). With this extension, Claude can write music for you a part at a time: tracks that play JuraDAW's built-in instruments and drum kit, clips of notes it writes itself, and ready-made drum beats, bass lines, chord sequences and melodies from JuraDAW's library, in any key. It sets the tempo and the mix (volume, left–right, reverb and echo), and saves a normal .juradaw song in your JuraDAW folder — or a standard MIDI file for other music programs. Open the song in JuraDAW and every note can still be changed. With Live with Claude, click Connect to Claude in JuraDAW (Chrome, Edge, Firefox or Safari — in Safari it opens a small link window to keep open) and Claude works on the song you have open there, while you watch and listen; every change is one step you can undo. That link stays on your computer and only the JuraDAW website can use it. It only reads and writes files inside the folder you choose.",
+  "author": { "name": "JuraDAW", "url": "https://github.com/gm7dha/JuraDAW" },
+  "homepage": "https://gm7dha.github.io/JuraDAW/",
+  "repository": { "type": "git", "url": "https://github.com/gm7dha/JuraDAW" },
+  "license": "MIT",
+  "keywords": ["music", "daw", "midi", "songwriting", "juradaw"],
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs", "${user_config.song_folder}"]
+    }
+  },
+  "user_config": {
+    "song_folder": {
+      "type": "directory",
+      "title": "Folder for your songs",
+      "description": "Where Claude saves your JuraDAW songs (and MIDI files), and the only folder it can open songs from.",
+      "default": "${DOCUMENTS}/JuraDAW",
+      "required": false
+    }
+  },
+  "tools": "__TOOLS__",
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}

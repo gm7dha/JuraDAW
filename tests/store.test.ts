@@ -1012,3 +1012,43 @@ describe("found in review", () => {
     expect(JSON.stringify(song())).not.toMatch(/null/);
   });
 });
+
+describe("changes from Claude (the live link)", () => {
+  it("are one undo step each, with a message, and show the track Claude added", () => {
+    const piano = st().addTrack("instrument", "piano")!;
+    const before = song();
+    const bass = { ...before.tracks[0], id: "claude-bass", name: "Bass", instrument: "bass" };
+    expect(st().applyClaudeChange(edits.addTrack(before, bass), "Claude: added a track", false)).toBeNull();
+    expect(song().tracks.map((t) => t.name)).toEqual(["Piano", "Bass"]);
+    expect(st().selectedTrackId).toBe("claude-bass");
+    expect(st().toasts[st().toasts.length - 1]).toMatchObject({ text: "Claude: added a track", kind: "info" });
+    st().undo();
+    expect(song()).toBe(before);
+    expect(song().tracks.map((t) => t.id)).toEqual([piano]);
+  });
+
+  it("a whole new song lets go of the selection and the file name, and Undo brings both back", () => {
+    const piano = st().addTrack("instrument", "piano")!;
+    const clip = st().addMidiClip(piano, 0, 4);
+    st().markSaved("mine.juradaw");
+    const mine = song();
+    const fresh = edits.setBpm(newSong("From Claude"), 90);
+    expect(st().applyClaudeChange(fresh, 'Claude: started a new song, "From Claude"', true)).toBeNull();
+    expect(song().name).toBe("From Claude");
+    expect(st().fileName).toBeNull();
+    expect(st().selectedClipIds).toEqual([]);
+    expect(st().editingClipId).toBeNull();
+    st().undo();
+    expect(song()).toBe(mine);
+    expect(st().fileName).toBe("mine.juradaw");
+    expect(edits.findClip(song(), clip)).toBeDefined();
+  });
+
+  it("is refused in the middle of a drag", () => {
+    st().addTrack("instrument", "piano");
+    st().dragStart();
+    expect(st().applyClaudeChange(edits.setBpm(song(), 99), "Claude: changed the tempo", false)).toMatch(/dragging/);
+    expect(song().bpm).toBe(120);
+    st().dragEnd();
+  });
+});

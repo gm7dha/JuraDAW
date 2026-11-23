@@ -129,6 +129,41 @@ export function HelpDialog() {
           ))}
         </tbody>
       </table>
+      <h3 className="help-heading">Use JuraDAW with Claude</h3>
+      <p className="small">
+        Describe some music in plain English — say, "a slow blues in A with drums, a walking bass and piano chords" — and Claude writes it a part at a time, as tracks, clips and notes you
+        can see, play and change. It can use everything in the Library, and saves a .juradaw song (or a MIDI file). Open that file here with Open.
+      </p>
+      <ol className="small help-steps">
+        <li>
+          <a href={`${import.meta.env.BASE_URL}juradaw-claude.mcpb`} download="juradaw-claude.mcpb">
+            Download the JuraDAW extension for Claude
+          </a>{" "}
+          (one file).
+        </li>
+        <li>Double-click the downloaded file (or drag it onto the Claude desktop app's window). Claude shows the install screen: click Install.</li>
+        <li>Start a new chat in Claude and ask for a song. Your songs are saved in Documents › JuraDAW (you can choose another folder in the extension's settings).</li>
+      </ol>
+      <h3 className="help-heading">Live with Claude</h3>
+      <p className="small">
+        Let Claude work on the song you have open here, while you watch and listen. With the extension installed and the Claude app open, click <b>Connect to Claude</b> in the top bar (nothing
+        connects until you do). The first time, your browser may ask whether JuraDAW can reach apps on this device: click Allow. A green <b>Live with Claude</b> badge shows while you're
+        connected; click it to disconnect.
+      </p>
+      <ul className="small help-steps">
+        <li>It works with every Claude chat that has JuraDAW, including chats you start after connecting (they're found within a few seconds).</li>
+        <li>Ask Claude for changes in the Claude app, e.g. "add a bass line under the chords" or "make the drums busier in bars 5 to 8". Its tracks, clips and notes appear here as it works; press Play to hear them.</li>
+        <li>
+          Each of Claude's changes is one step you can undo ({platform === "mac" ? "⌘Z" : "Ctrl+Z"}). You can keep working too: if you both change something at the same moment, Claude's change is
+          turned back and it tries again, so nothing is lost. Claude waits while you're recording or have the Library or Export open.
+        </li>
+        <li>Claude works with notes. Recording a voice or an instrument, and saving a sound file (Export), are done here in JuraDAW.</li>
+        <li>
+          Works in Chrome, Edge and Firefox. In Safari, Connect to Claude opens a small <b>JuraDAW ↔ Claude</b> window that passes messages along: allow the pop-up if Safari asks, and keep that window
+          open while you work. If connecting doesn't work, ask Claude to save the song and open the .juradaw file with Open.
+        </li>
+        <li>The link stays on this computer: only the JuraDAW website can use it, and Claude only saves files in your JuraDAW folder.</li>
+      </ul>
       <p className="muted small">
         Your song is kept in this browser as you work, and saved to a <code>.juradaw</code> file with Save. JuraDAW is free and open source (MIT):{" "}
         <a href="https://github.com/gm7dha/JuraDAW" target="_blank" rel="noreferrer">
