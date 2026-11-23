@@ -6,7 +6,7 @@
  * fresh array or object each call.
  */
 import type { RecordedTake } from "../audio/engineApi";
-import type { AudioInfo, Clip, Loop, Note, Song, Track, TrackKind } from "./types";
+import type { AudioInfo, Clip, Loop, Note, Song, Sweep, Track, TrackFilter, TrackKind } from "./types";
 
 /** Select = pick, move, resize. Pencil = draw clips and notes. Eraser = click to remove. Scissors = split a clip. */
 export type Tool = "select" | "pencil" | "eraser" | "scissors";
@@ -16,8 +16,11 @@ export type BottomPanel = "editor" | "mixer" | "keys" | null;
 /** Snap grid in beats: 1 = beat, 0.5 = 1/8 note, 0.25 = 1/16, 0.125 = 1/32, 0 = off, "bar" = whole bars. */
 export type Snap = "bar" | 1 | 0.5 | 0.25 | 0.125 | 0;
 
-/** What may be changed on a clip: any field of either kind of clip but its id and kind (fields of the other kind are ignored). */
-export type ClipPatch = Clip extends infer C ? (C extends Clip ? Partial<Omit<C, "id" | "kind">> : never) : never;
+/** What may be changed on a clip: any field of either kind of clip but its id and kind (fields of the other kind are ignored; `sweep: null` takes a filter sweep off). */
+export type ClipPatch = Clip extends infer C ? (C extends Clip ? Partial<Omit<C, "id" | "kind" | "sweep">> & { sweep?: Sweep | null } : never) : never;
+
+/** What may be changed on a track (for the filter, just the parts that change). */
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter">> & { filter?: Partial<TrackFilter> };
 
 export interface Toast {
   id: number;
@@ -91,7 +94,7 @@ export interface State {
   addTrack: (kind: TrackKind, instrument?: string) => string | null;
   removeTrack: (id: string) => void;
   duplicateTrack: (id: string) => void;
-  updateTrack: (id: string, patch: Partial<Omit<Track, "id" | "kind">>) => void;
+  updateTrack: (id: string, patch: TrackPatch) => void;
   /** −1 = up, 1 = down. */
   moveTrack: (id: string, by: number) => void;
   selectTrack: (id: string | null) => void;

@@ -673,6 +673,69 @@ try {
     "every toolbar button inside the toolbar",
   );
 
+  begin("shape the sound: a track's effects, a clip's fade and sweep, and the new instruments");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await closeToasts();
+  {
+    const shaped = await page.evaluate(() => {
+      const s = window.juradawStore.getState();
+      const id = s.addTrack("instrument", "choir");
+      const clip = window.juradawStore.getState().addMidiClip(id, 0, 8);
+      window.juradawStore.getState().addNote(clip, { pitch: 60, start: 0, length: 8, velocity: 100 });
+      window.juradawStore.getState().selectClips([clip]);
+      return { id, clip };
+    });
+    await page.waitForSelector(".track-header:has-text('Choir')");
+    // The side panel has the track's own effects and the clip's shape; a slider changes the song.
+    for (const label of ["Drive", "Crush", "Filter", "Filter ring", "Wobble", "Pump", "Clip volume", "Fade in", "Fade out"]) {
+      expect((await page.locator(`.side-panel input[type=range][aria-label="${label}"]`).count()) === 1, `a "${label}" slider in the side panel`);
+    }
+    const trackNow = (field) => get(`s.history.present.tracks.find((t) => t.id === "${shaped.id}").${field}`);
+    const clipNow = (field) => get(`s.history.present.clips.find((c) => c.id === "${shaped.clip}").${field}`);
+    await page.locator('.side-panel input[aria-label="Drive"]').fill("0.4");
+    expect((await trackNow("drive")) === 0.4, "the Drive slider setting the track's drive");
+    await page.locator('.side-panel input[aria-label="Pump"]').fill("0.8");
+    await page.click(".side-panel button:has-text('Cut the bottom')");
+    await page.locator('.side-panel input[aria-label="Filter"]').fill("0.3");
+    expect((await trackNow("filter.kind")) === "high" && (await trackNow("filter.cutoff")) === 0.3, "the filter cutting the bottom at the place chosen");
+    await page.click(".side-panel button:has-text('Cut the top')");
+    expect((await trackNow("filter")) === undefined, "the filter being off again after choosing the other kind");
+    await page.locator('.side-panel input[aria-label="Fade in"]').fill("4");
+    expect((await clipNow("fadeIn")) === 4, "the Fade in slider giving the clip a four-beat swell");
+    await page.getByLabel("Sweep the filter over this clip").check();
+    expect((await clipNow("sweep.from")) === 0.3, "the sweep box giving the clip a filter sweep");
+    expect((await page.locator('.side-panel input[aria-label="From"]').count()) === 1, "the sweep's From and To sliders");
+    // It plays: the pump, the sweep and the fade are booked in time with the song, and Stop lets go of them.
+    await page.evaluate((id) => {
+      const s = window.juradawStore.getState();
+      for (const t of s.history.present.tracks) if (t.id !== id && !t.mute) s.updateTrack(t.id, { mute: true });
+      s.setLoop({ on: false });
+      s.setCursor(0);
+    }, shaped.id);
+    await page.keyboard.press("Space");
+    await until("s.playing", "Space starting the song (not unticking the box just ticked)");
+    expect((await clipNow("sweep.from")) === 0.3, "the sweep still being there");
+    await playedPast(1.5);
+    await until(`engine.level("${shaped.id}") > 0.05`, "the choir being heard through its effects");
+    await page.keyboard.press("Space");
+    await until("!s.playing", "playing to stop");
+    // Every new instrument is offered, and picking one changes the track.
+    for (const name of ["Soft piano", "Choir", "Sub bass", "Gritty bass", "Big saw", "Wobbly synth", "Noise sweep"]) {
+      expect((await page.locator(`.side-panel button:has-text("${name}")`).count()) >= 1, `"${name}" among the instruments`);
+    }
+    await page.locator('.side-panel button:has-text("Wobbly synth")').first().click();
+    expect((await trackNow("instrument")) === "wobble", "picking the wobbly synth");
+    // Take it all back, so the rest of the test finds the song as it was.
+    const steps = (await get("s.history.past.length")) - 0;
+    void steps;
+    await page.evaluate((id) => window.juradawStore.getState().removeTrack(id), shaped.id);
+    await page.evaluate(() => {
+      const s = window.juradawStore.getState();
+      for (const t of s.history.present.tracks) if (t.mute) s.updateTrack(t.id, { mute: false });
+    });
+    await closeToasts();
+  }
+
   begin("Connect to Claude with no extension running says what to do");
   await page.setViewportSize({ width: 1440, height: 900 });
   await closeToasts();

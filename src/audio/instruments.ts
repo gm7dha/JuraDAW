@@ -30,11 +30,13 @@ export interface Instrument {
   /**
    * Start a note at a time on the context's clock (now, if that's passed),
    * playing into `destination`. Call `stop` on what comes back to let it go.
+   * `seconds` is how long the note will last, when that's known (the song's own notes; not a key held down live):
+   * the noise sweep uses it to reach its top just as the note ends.
    */
-  startVoice(ctx: BaseAudioContext, destination: AudioNode, pitch: number, velocity: number, when: number): Voice;
+  startVoice(ctx: BaseAudioContext, destination: AudioNode, pitch: number, velocity: number, when: number, seconds?: number): Voice;
 }
 
-type Recipe = (p: Patch, pitch: number, velocity: number) => VoiceParts;
+type Recipe = (p: Patch, pitch: number, velocity: number, seconds?: number) => VoiceParts;
 
 // ── the recipes ──
 
@@ -337,6 +339,180 @@ const bells: Recipe = (p, pitch, velocity) => {
   return p.parts(level, 0.45);
 };
 
+/** Strengths of a soft, rounded string: only a few harmonics, falling away fast. */
+const FELT_WAVE = Array.from({ length: 12 }, (_, i) => 1 / Math.pow(i + 1, 2.1));
+
+/** Soft piano: an upright with felt over the strings — close, muffled and gentle, with the thump of the hammer. */
+const feltPiano: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const decay = clamp(2.6 * Math.pow(2, -(pitch - 36) / 24), 0.4, 4);
+  const tone = p.filter("lowpass", 800, 0.5);
+  const top = Math.min(f * (1.6 + 3.2 * bright) + 250, 5000);
+  tone.frequency.setValueAtTime(top, t);
+  tone.frequency.setTargetAtTime(Math.min(f * 1.6 + 250, top), t, 0.25);
+  const wave = p.wave("felt", FELT_WAVE);
+  p.osc(wave, f, 1.2).connect(p.gain(0.55)).connect(tone);
+  p.osc(wave, f, -2.4).connect(p.gain(0.45)).connect(tone);
+  // The felt and the wooden action: a low, soft thump.
+  const noise = p.noise();
+  noise.stop(t + 0.3);
+  const thump = p.filter("lowpass", clamp(f * 1.5, 150, 700), 0.7);
+  noise.connect(thump).connect(p.envelope(0.55, 0.004, 0, 0.03)).connect(tone);
+  const amp = p.envelope(1, 0.012, 0, decay);
+  const level = p.gain(LEVEL["felt-piano"] * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.12);
+};
+
+/** Choir: voices singing "aah" — a buzz shaped by the three resonances of an open mouth, with breath and a slow vibrato. */
+const choir: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const singers: OscillatorNode[] = [];
+  const buzz = p.gain(1);
+  for (const [detune, share] of [[-8, 0.5], [0, 0.6], [9, 0.5]] as const) {
+    const osc = p.osc("sawtooth", f, detune);
+    singers.push(osc);
+    osc.connect(p.gain(share)).connect(buzz);
+  }
+  delayedVibrato(p, 5.1, 14, 0.3, singers);
+  // Breath: a little noise through the same mouth.
+  const breath = p.noise();
+  breath.connect(p.gain(0.05)).connect(buzz);
+  // "Aah": higher voices have a slightly smaller mouth, so the resonances move up a little.
+  const lift = 1 + clamp((pitch - 55) / 48, 0, 0.25);
+  const voice = p.gain(1);
+  for (const [hz, q, share] of [[760, 7, 1], [1180, 9, 0.5], [2750, 11, 0.16 + 0.2 * bright]] as const) {
+    buzz.connect(p.filter("bandpass", hz * lift, q)).connect(p.gain(share)).connect(voice);
+  }
+  // The note itself, so low notes keep their body.
+  buzz.connect(p.filter("lowpass", Math.min(f * 2, 900), 0.6)).connect(p.gain(0.22)).connect(voice);
+  const amp = p.gain(0);
+  amp.gain.setValueAtTime(0, t);
+  amp.gain.setTargetAtTime(1, t, 0.11);
+  const level = p.gain(LEVEL.choir * velocityGain(velocity));
+  voice.connect(p.pan(0)).connect(amp).connect(level);
+  return p.parts(level, 0.4);
+};
+
+/** Sub bass: almost pure and very low — felt more than heard — with a trace of the octave above so small speakers still find the note. */
+const subBass: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const tone = p.filter("lowpass", Math.min(f * 4 + 120, 900), 0.6);
+  p.osc("sine", f).connect(p.gain(1)).connect(tone);
+  p.osc("triangle", f * 2).connect(p.gain(0.13)).connect(tone);
+  const amp = p.envelope(1, 0.012, 0.92, 0.3);
+  const level = p.gain(LEVEL["sub-bass"] * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.07);
+};
+
+/** The gritty bass's bend: pushes the wave hard into a soft wall, which is where the snarl comes from. */
+const GRIT_CURVE = (() => {
+  const curve = new Float32Array(1025);
+  for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(4.5 * ((2 * i) / (curve.length - 1) - 1));
+  return curve;
+})();
+
+/** Gritty bass: two sawtooths a little apart, overdriven, through a ringing filter that snarls shut — the harsh, growling kind. */
+const growlBass: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const raw = p.gain(0.5);
+  p.osc("sawtooth", f, -14).connect(raw);
+  p.osc("sawtooth", f, 13).connect(raw);
+  p.osc("square", f / 2).connect(p.gain(0.5)).connect(raw);
+  const grit = p.shaper(GRIT_CURVE);
+  const tone = p.filter("lowpass", 1000, 7);
+  const top = Math.min(f * (9 + 16 * bright), 9000);
+  tone.frequency.setValueAtTime(top, t);
+  tone.frequency.setTargetAtTime(Math.min(f * 3.5 + 200, top), t, 0.16);
+  // The growl: the filter trembles a few times a second.
+  const growl = p.osc("sine", 5.5);
+  growl.connect(p.gain(f * 1.2)).connect(tone.frequency);
+  const amp = p.envelope(1, 0.004, 0.85, 0.25);
+  const level = p.gain(LEVEL["growl-bass"] * velocityGain(velocity));
+  raw.connect(grit).connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.05);
+};
+
+/** Big saw: seven sawtooths spread out of tune and from side to side — the huge, bright chord sound of dance music. */
+const supersaw: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const tone = p.filter("lowpass", Math.min(1500 + f * 6 * bright, 12000), 0.6);
+  const spread = [-26, -17, -8, 0, 9, 16, 25];
+  spread.forEach((detune, i) => {
+    p.osc("sawtooth", f, detune)
+      .connect(p.gain(detune === 0 ? 0.42 : 0.3))
+      .connect(p.pan((i / (spread.length - 1)) * 1.6 - 0.8))
+      .connect(tone);
+  });
+  const body = p.filter("highpass", f * 0.7, 0.5);
+  const amp = p.envelope(1, 0.012, 0.9, 0.2);
+  const level = p.gain(LEVEL.supersaw * velocityGain(velocity));
+  tone.connect(body).connect(amp).connect(level);
+  return p.parts(level, 0.22);
+};
+
+/** Wobbly synth: a warm, slightly out-of-tune keyboard that drifts in pitch like a worn tape. */
+const wobble: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.filter("lowpass", 1000, 1.4);
+  const open = Math.min(600 + f * 3.2 * bright, 5500);
+  tone.frequency.setValueAtTime(Math.min(open * 1.5, 7000), t);
+  tone.frequency.setTargetAtTime(open, t, 0.3);
+  const oscs = [p.osc("sawtooth", f, -13), p.osc("sawtooth", f, 12), p.osc("triangle", f / 2, 3)];
+  oscs[0].connect(p.gain(0.42)).connect(p.pan(-0.5)).connect(tone);
+  oscs[1].connect(p.gain(0.42)).connect(p.pan(0.5)).connect(tone);
+  oscs[2].connect(p.gain(0.4)).connect(tone);
+  // Two slow drifts that never line up, so the pitch wanders rather than swings.
+  for (const [rate, cents] of [[0.61, 16], [0.23, 11]] as const) {
+    const drift = p.osc("sine", rate);
+    const depth = p.gain(cents);
+    drift.connect(depth);
+    for (const osc of oscs) depth.connect(osc.detune);
+  }
+  const amp = p.envelope(1, 0.03, 0.8, 0.5);
+  const level = p.gain(LEVEL.wobble * velocityGain(velocity));
+  tone.connect(amp).connect(level);
+  return p.parts(level, 0.35);
+};
+
+/**
+ * Noise sweep: a rush of noise for a build. Notes from middle C up rise (the higher the note, the higher it ends)
+ * and get louder until the note stops; notes below middle C fall and die away. The sweep takes as long as the note
+ * (four seconds for a key held down live).
+ */
+const noiseSweep: Recipe = (p, pitch, velocity, seconds) => {
+  const t = p.start;
+  const length = clamp(seconds ?? 4, 0.25, 60);
+  const rising = pitch >= 60;
+  const high = clamp(midiToHz(pitch + (rising ? 48 : 60)), 3000, 15000);
+  const low = 220;
+  const band = p.filter("bandpass", low, 1.6);
+  band.frequency.setValueAtTime(rising ? low : high, t);
+  band.frequency.exponentialRampToValueAtTime(rising ? high : low, t + length);
+  const amp = p.gain(0);
+  amp.gain.setValueAtTime(0, t);
+  if (rising) {
+    amp.gain.linearRampToValueAtTime(0.12, t + Math.min(0.05, length / 4));
+    amp.gain.exponentialRampToValueAtTime(1, t + length);
+  } else {
+    amp.gain.linearRampToValueAtTime(1, t + Math.min(0.02, length / 4));
+    amp.gain.exponentialRampToValueAtTime(0.02, t + length);
+  }
+  const level = p.gain(LEVEL.sweep * velocityGain(velocity));
+  p.noise().connect(band).connect(p.filter("highpass", 150, 0.5)).connect(amp).connect(level);
+  return p.parts(level, rising ? 0.03 : 0.15);
+};
+
 /**
  * How loud each recipe is made, set by measuring (devkit/audio-check.mjs
  * prints the figures) so the instruments match at velocity 100.
@@ -352,6 +528,13 @@ const LEVEL = {
   lead: 0.48,
   pluck: 0.55,
   bells: 0.31,
+  "felt-piano": 0.38,
+  choir: 1.23,
+  "sub-bass": 0.43,
+  "growl-bass": 0.34,
+  supersaw: 0.31,
+  wobble: 0.35,
+  sweep: 1,
 };
 
 // ── the list ──
@@ -363,9 +546,9 @@ function keyed(id: keyof typeof LEVEL, name: string, group: string, recipe: Reci
     group,
     icon: ICONS[id],
     kind: "keys",
-    startVoice(ctx, destination, pitch, velocity, when) {
+    startVoice(ctx, destination, pitch, velocity, when, seconds) {
       const patch = new Patch(ctx, Math.max(when, ctx.currentTime));
-      return makeVoice(ctx, destination, recipe(patch, pitch, velocity));
+      return makeVoice(ctx, destination, recipe(patch, pitch, velocity, seconds));
     },
   };
 }
@@ -373,15 +556,22 @@ function keyed(id: keyof typeof LEVEL, name: string, group: string, recipe: Reci
 /** Every built-in instrument, in the order they're offered. */
 export const INSTRUMENTS: Instrument[] = [
   keyed("piano", "Piano", "Keys", piano),
+  keyed("felt-piano", "Soft piano", "Keys", feltPiano),
   keyed("electric-piano", "Electric piano", "Keys", electricPiano),
   keyed("organ", "Organ", "Keys", organ),
   keyed("strings", "Strings", "Strings and pads", strings),
   keyed("pad", "Soft pad", "Strings and pads", pad),
+  keyed("choir", "Choir", "Strings and pads", choir),
   keyed("bass", "Bass guitar", "Bass", bass),
   keyed("synth-bass", "Synth bass", "Bass", synthBass),
+  keyed("sub-bass", "Sub bass", "Bass", subBass),
+  keyed("growl-bass", "Gritty bass", "Bass", growlBass),
   keyed("lead", "Synth lead", "Synths", lead),
+  keyed("supersaw", "Big saw", "Synths", supersaw),
+  keyed("wobble", "Wobbly synth", "Synths", wobble),
   keyed("pluck", "Pluck", "Synths", pluck),
   keyed("bells", "Bells", "Synths", bells),
+  keyed("sweep", "Noise sweep", "Synths", noiseSweep),
   {
     id: "drums",
     name: "Drum kit",

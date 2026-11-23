@@ -6,6 +6,23 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.3 — Shaping the sound
+
+- **Effects on every track**, in the panel on the left under Reverb and Echo: **Drive** (warmth, then grit, then
+  fuzz), **Crush** (the rough, lo-fi sound of an old sampler), a **Filter** that cuts the top or the bottom of the
+  sound, with a **ring** (resonance) at the cut, **Wobble** (a slow drift in pitch that widens the sound, like a
+  worn tape) and **Pump** (the volume dips on every beat and swells back, as dance music does). All off until you
+  turn them up; double-click a slider to turn it off again.
+- **Clips can swell in and die away**: every clip now has its own **volume**, a **fade in** and a **fade out**, so a
+  part can arrive gradually instead of switching on.
+- **Filter sweeps**: tick "Sweep the filter over this clip" and the track's filter opens up (or closes down) while
+  that clip plays — the classic build.
+- **Seven new instruments**: **Soft piano** (a felted upright), **Choir**, **Sub bass**, **Gritty bass**, **Big saw**
+  (the huge chord sound of dance music), **Wobbly synth** (warm and slightly out of tune) and **Noise sweep** — a
+  rush of noise for builds that rises for exactly as long as its note (a low note falls instead).
+- Claude can use all of it: ask for "a filter sweep into the chorus", "pumping chords" or "a choir that fades in".
+- Songs made before this version sound exactly as they did.
+
 ## v0.2 — Make music with Claude
 
 - **Use JuraDAW with Claude**: a free extension for the Claude desktop app (Help › Use JuraDAW with Claude: one file

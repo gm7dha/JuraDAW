@@ -60,12 +60,22 @@ const PROGRAM_OF: Record<string, number> = {
   strings: 48,
   lead: 80,
   pad: 89,
+  "felt-piano": 0,
+  choir: 52,
+  "sub-bass": 39,
+  "growl-bass": 87,
+  supersaw: 81,
+  wobble: 90,
+  sweep: 122,
 };
 
 /** The nearest of JuraDAW's instruments to a General MIDI one; a piano when nothing is near (or the file doesn't say). */
 export function instrumentForProgram(program: number | null): string {
   if (program === null) return "piano";
   if (program === 4 || program === 5) return "electric-piano";
+  if (program === 52 || program === 53) return "choir";
+  if (program === 87) return "growl-bass";
+  if (program === 122) return "sweep";
   if (program >= 8 && program <= 15) return "bells";
   if (program >= 16 && program <= 23) return "organ";
   if (program >= 24 && program <= 31) return "pluck";

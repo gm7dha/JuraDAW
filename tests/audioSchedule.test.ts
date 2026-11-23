@@ -131,7 +131,7 @@ describe("notesBetween", () => {
   });
   it("carries the velocity", () => {
     const s = song({ tracks: [track("a")], clips: [midi("c", "a", 0, 4, [note(60, 0, 1, 37)])] });
-    expect(notesBetween(s, 0, 1)[0]).toEqual({ trackId: "a", pitch: 60, velocity: 37, beat: 0, lengthBeats: 1 });
+    expect(notesBetween(s, 0, 1)[0]).toEqual({ trackId: "a", pitch: 60, velocity: 37, beat: 0, lengthBeats: 1, clipId: "c", clipBeat: 0 });
   });
 });
 

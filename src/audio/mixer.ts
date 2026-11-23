@@ -2,7 +2,8 @@
  * The mixer: the path every sound takes on its way out, the same for live
  * playing and for the mixdown.
  *
- *   each track:  input → volume (and mute/solo) → left–right → the mix
+ *   each track:  input → its own effects (drive → crush → filter → wobble → pump)
+ *                      → volume (and mute/solo) → left–right → the mix
  *                                         ├→ its share to the reverb
  *                                         └→ its share to the echo
  *   the mix (with what the reverb and echo give back), turned down for
@@ -13,7 +14,8 @@
  * echo (repeats in time with the tempo) shared by all the tracks. Changes
  * are eased in over a few thousandths of a second so nothing clicks.
  */
-import type { Song, Track } from "../model/types";
+import { PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, cutoffHz, effectsOf, filterIsOn, pumpFloor, sweepAt, trackHasSweeps, type TrackEffects } from "../model/shaping";
+import type { Clip, Song, Track } from "../model/types";
 import { audibleTracks } from "./schedule";
 import { beatsToSeconds, clamp, seededRandom } from "./shared";
 
@@ -78,8 +80,70 @@ export function ceilingCurve(points: number) {
 /** The quietest level a meter shows, in decibels below full. */
 const METER_FLOOR_DB = 54;
 
+/** How hard the drive pushes at its strongest (the steepness of its curve). */
+const MOST_DRIVE = 28;
+/** The wobble's two delays (seconds), how fast each drifts (times a second) and how far (seconds at full). */
+const WOBBLE: [delay: number, rate: number, depth: number, pan: number][] = [
+  [0.011, 0.37, 0.0035, -0.7],
+  [0.017, 0.53, 0.0045, 0.7],
+];
+
+/** The drive's curve: gentle warmth at low settings, hard fuzz at high ones; full-scale in gives full-scale out. */
+export function driveCurve(amount: number, points = 2049) {
+  const k = 1 + MOST_DRIVE * amount * amount;
+  const top = Math.tanh(k);
+  const curve = new Float32Array(points);
+  for (let i = 0; i < points; i++) curve[i] = Math.tanh(k * ((2 * i) / (points - 1) - 1)) / top;
+  return curve;
+}
+
+/** How much the drive is turned down afterwards, so more drive is more grit rather than simply louder. */
+export function driveTrim(amount: number): number {
+  const k = 1 + MOST_DRIVE * amount * amount;
+  return Math.pow(Math.tanh(k) / k, 0.5);
+}
+
+/**
+ * How many steps the crush leaves between silence and full scale, for an amount 0–1: from 160 (a slight grain)
+ * down to 8. (A track's sound is usually well under full scale, so at 8 an ordinary note has only two or three
+ * levels to sit on, and its quiet tail drops away to nothing.)
+ */
+export function crushSteps(amount: number): number {
+  return 160 * Math.pow(8 / 160, clamp(amount, 0, 1));
+}
+
+/** The crush's curve: a staircase, so the smooth wave becomes a blocky one. */
+export function crushCurve(amount: number, points = 8193) {
+  const steps = crushSteps(amount);
+  const curve = new Float32Array(points);
+  for (let i = 0; i < points; i++) curve[i] = Math.round(((2 * i) / (points - 1) - 1) * steps) / steps;
+  return curve;
+}
+
+/** The filter's sharpness (Q) for a resonance setting 0–1. */
+export function resonanceQ(resonance: number): number {
+  return 0.7 + 15 * clamp(resonance, 0, 1) * clamp(resonance, 0, 1);
+}
+
+interface Wobble {
+  wet: GainNode;
+  depths: GainNode[];
+  nodes: AudioNode[];
+}
+
 interface Strip {
   input: GainNode;
+  /** The track's own effects, in order. */
+  drive: WaveShaperNode;
+  driveOut: GainNode;
+  crush: WaveShaperNode;
+  filter: BiquadFilterNode;
+  pump: GainNode;
+  /** Made the first time the track's wobble is turned up. */
+  wobble: Wobble | null;
+  /** The settings last put into the two curves (making a curve is work, so only when they change). */
+  driveNow: number;
+  crushNow: number;
   fader: GainNode;
   pan: StereoPannerNode;
   reverbSend: GainNode;
@@ -149,6 +213,8 @@ export class Mixer {
   /** Where a meter's recent samples are read into. */
   private readonly samples = new Float32Array(1024);
   private bpm = 0;
+  /** True while the song is playing and the mixer is moving filters and pumping volumes in time with it. */
+  private shaping = false;
 
   /** Where the metronome's clicks go: straight out, untouched by the master volume. */
   readonly clickInput: GainNode;
@@ -220,13 +286,25 @@ export class Mixer {
     const ctx = this.ctx;
     const strip: Strip = {
       input: ctx.createGain(),
+      drive: ctx.createWaveShaper(),
+      driveOut: ctx.createGain(),
+      crush: ctx.createWaveShaper(),
+      filter: ctx.createBiquadFilter(),
+      pump: ctx.createGain(),
+      wobble: null,
+      driveNow: 0,
+      crushNow: 0,
       fader: ctx.createGain(),
       pan: ctx.createStereoPanner(),
       reverbSend: ctx.createGain(),
       echoSend: ctx.createGain(),
       meter: null,
     };
-    strip.input.connect(strip.fader).connect(strip.pan).connect(this.mix);
+    // With no curve a WaveShaper passes sound through untouched, and an "allpass" filter leaves it sounding the same.
+    strip.drive.oversample = "2x";
+    strip.filter.type = "allpass";
+    strip.input.connect(strip.drive).connect(strip.driveOut).connect(strip.crush).connect(strip.filter).connect(strip.pump);
+    strip.pump.connect(strip.fader).connect(strip.pan).connect(this.mix);
     strip.pan.connect(strip.reverbSend).connect(this.reverbIn);
     strip.pan.connect(strip.echoSend).connect(this.echoIn);
     if (this.meters) strip.meter = this.makeMeter(strip.pan);
@@ -237,6 +315,110 @@ export class Mixer {
   private set(param: AudioParam, value: number, atOnce: boolean): void {
     if (atOnce) param.value = value;
     else param.setTargetAtTime(value, this.ctx.currentTime, SMOOTH);
+  }
+
+  /** The wobble: two copies of the sound, each a few thousandths of a second late and drifting slowly in pitch, one to each side. */
+  private makeWobble(strip: Strip): Wobble {
+    const ctx = this.ctx;
+    const wet = ctx.createGain();
+    wet.gain.value = 0;
+    const wobble: Wobble = { wet, depths: [], nodes: [wet] };
+    for (const [seconds, rate, , pan] of WOBBLE) {
+      const delay = ctx.createDelay(0.05);
+      delay.delayTime.value = seconds;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = rate;
+      const depth = ctx.createGain();
+      depth.gain.value = 0;
+      lfo.connect(depth).connect(delay.delayTime);
+      lfo.start();
+      const side = ctx.createStereoPanner();
+      side.pan.value = pan;
+      strip.filter.connect(delay).connect(side).connect(wet);
+      wobble.depths.push(depth);
+      wobble.nodes.push(delay, lfo, depth, side);
+    }
+    wet.connect(strip.pump);
+    return wobble;
+  }
+
+  /** A track's own effects, as it has them now. */
+  private applyEffects(strip: Strip, e: TrackEffects, sweeps: boolean, atOnce: boolean): void {
+    if (e.drive !== strip.driveNow) {
+      strip.driveNow = e.drive;
+      strip.drive.curve = e.drive > 0 ? driveCurve(e.drive) : null;
+      this.set(strip.driveOut.gain, e.drive > 0 ? driveTrim(e.drive) : 1, atOnce);
+    }
+    if (e.crush !== strip.crushNow) {
+      strip.crushNow = e.crush;
+      strip.crush.curve = e.crush > 0 ? crushCurve(e.crush) : null;
+    }
+    // The filter is in use if the track has it on, or a clip on the track sweeps it.
+    const on = filterIsOn(e.filter) || sweeps;
+    const type: BiquadFilterType = !on ? "allpass" : e.filter.kind === "high" ? "highpass" : "lowpass";
+    if (strip.filter.type !== type) strip.filter.type = type;
+    this.set(strip.filter.Q, on ? resonanceQ(e.filter.resonance) : 0.7, atOnce);
+    // While the song plays and a clip sweeps this filter, its place is set in time with the song (scheduleShaping).
+    if (!(sweeps && this.shaping)) this.set(strip.filter.frequency, this.hz(e.filter.cutoff), atOnce);
+    if (e.chorus > 0 && !strip.wobble) strip.wobble = this.makeWobble(strip);
+    if (strip.wobble) {
+      this.set(strip.wobble.wet.gain, 0.45 * e.chorus, atOnce);
+      strip.wobble.depths.forEach((depth, i) => this.set(depth.gain, WOBBLE[i][2] * (0.25 + 0.75 * e.chorus), atOnce));
+    }
+  }
+
+  /** A cutoff setting as a frequency this context can make. */
+  private hz(cutoff: number): number {
+    return Math.min(cutoffHz(cutoff), this.ctx.sampleRate * 0.45);
+  }
+
+  /**
+   * In time with the song, for the stretch between two beats (`timeOf` says when a beat falls on the sound clock):
+   * the pump's dip on each beat, and the filter's place wherever a clip sweeps it. Call for every stretch played,
+   * in order; `clipBeats` gives a clip's length in beats.
+   */
+  scheduleShaping(song: Song, from: number, to: number, timeOf: (beat: number) => number, clipBeats: (clip: Clip) => number): void {
+    if (!(to > from)) return;
+    this.shaping = true;
+    const now = this.ctx.currentTime;
+    for (const track of song.tracks) {
+      const strip = this.strips.get(track.id);
+      if (!strip) continue;
+      const e = effectsOf(track);
+      if (e.pump > 0) {
+        const floor = pumpFloor(e.pump);
+        const beatSeconds = beatsToSeconds(1, song.bpm);
+        for (let beat = Math.ceil(from - 1e-9); beat < to - 1e-9; beat++) {
+          const t = timeOf(beat);
+          if (t < now) continue;
+          strip.pump.gain.setValueAtTime(1, t);
+          strip.pump.gain.linearRampToValueAtTime(floor, t + Math.min(PUMP_DIP_SECONDS, beatSeconds * 0.1));
+          strip.pump.gain.linearRampToValueAtTime(1, t + beatSeconds * PUMP_SWELL_SHARE);
+        }
+      }
+      if (trackHasSweeps(song, track.id)) {
+        const a = sweepAt(song, track.id, from, clipBeats) ?? e.filter.cutoff;
+        const b = sweepAt(song, track.id, to - 1e-6, clipBeats) ?? e.filter.cutoff;
+        const start = Math.max(timeOf(from), now);
+        strip.filter.frequency.setValueAtTime(this.hz(a), start);
+        strip.filter.frequency.exponentialRampToValueAtTime(this.hz(b), Math.max(timeOf(to), start + 0.001));
+      }
+    }
+  }
+
+  /** The song has stopped: let go of everything booked in time with it, and put the filters back where the tracks have them. */
+  releaseShaping(song: Song): void {
+    if (!this.shaping) return;
+    this.shaping = false;
+    const now = this.ctx.currentTime;
+    for (const track of song.tracks) {
+      const strip = this.strips.get(track.id);
+      if (!strip) continue;
+      strip.pump.gain.cancelScheduledValues(now);
+      strip.pump.gain.setTargetAtTime(1, now, SMOOTH);
+      strip.filter.frequency.cancelScheduledValues(now);
+      strip.filter.frequency.setTargetAtTime(this.hz(effectsOf(track).filter.cutoff), now, SMOOTH);
+    }
   }
 
   private applyTrack(strip: Strip, track: Track, audible: boolean, atOnce: boolean): void {
@@ -258,6 +440,7 @@ export class Mixer {
       const isNew = !strip;
       if (!strip) this.strips.set(track.id, (strip = this.makeStrip()));
       this.applyTrack(strip, track, audible.has(track.id), isNew);
+      this.applyEffects(strip, effectsOf(track), trackHasSweeps(song, track.id), isNew);
     }
     for (const [id, strip] of this.strips) {
       if (song.tracks.some((t) => t.id === id)) continue;
@@ -265,7 +448,7 @@ export class Mixer {
       // Fade it out, then take it apart a moment later, so a track removed while sounding doesn't click.
       strip.fader.gain.setTargetAtTime(0, this.ctx.currentTime, SMOOTH);
       const takeApart = () => {
-        for (const node of [strip.input, strip.fader, strip.pan, strip.reverbSend, strip.echoSend]) node.disconnect();
+        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.filter, strip.pump, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, ...(strip.wobble?.nodes ?? [])]) node.disconnect();
       };
       if (this.meters) setTimeout(takeApart, 150);
       else takeApart();

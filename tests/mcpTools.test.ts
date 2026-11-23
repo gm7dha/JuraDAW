@@ -142,6 +142,36 @@ describe("making a song", () => {
   });
 });
 
+describe("shaping the sound", () => {
+  it("sets a track's own effects and a clip's volume, fades and filter sweep", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "supersaw", name: "Chords", pump: 60, drive: 20, filter: { kind: "low", cutoff: 70, resonance: 30 } });
+    expect(s.song.tracks[0]).toMatchObject({ instrument: "supersaw", pump: 0.6, drive: 0.2, filter: { kind: "low", cutoff: 0.7, resonance: 0.3 } });
+    await ok(s, "edit_track", { track: "Chords", crush: 40, wobble: 25, filter: { cutoff: 50 }, pump: 0 });
+    expect(s.song.tracks[0]).toMatchObject({ crush: 0.4, chorus: 0.25, filter: { kind: "low", cutoff: 0.5, resonance: 0.3 } });
+    expect("pump" in s.song.tracks[0]).toBe(false);
+    const said = await ok(s, "add_clip", { track: "Chords", bars: 4, notes: [{ pitch: "C4", start: 0, length: 16 }], volume: 80, fade_in: 8, filter_sweep: { from: 20, to: 100 } });
+    expect(said).toMatch(/volume 80%, fades in over 8 beats, filter sweep 20% to 100%/);
+    expect(midi(s)[0]).toMatchObject({ gain: 0.8, fadeIn: 8, sweep: { from: 0.2, to: 1 } });
+    await ok(s, "edit_clip", { clip: 1, track: "Chords", fade_out: 4, filter_sweep: null, volume: 100 });
+    const clip = midi(s)[0];
+    expect(clip).toMatchObject({ fadeIn: 8, fadeOut: 4 });
+    expect("sweep" in clip || "gain" in clip).toBe(false);
+    const look = await ok(s, "describe_song");
+    expect(look).toMatch(/drive 20%, crush 40%, filter low at 50% \(resonance 30%\), wobble 25%/);
+    expect(look).toMatch(/fades in over 8 beats, fades out over 4 beats/);
+    await ok(s, "edit_track", { track: "Chords", filter: null });
+    expect("filter" in s.song.tracks[0]).toBe(false);
+    expect(await bad(s, "edit_track", { track: "Chords", drive: 140 })).toMatch(/drive/);
+    expect(await bad(s, "edit_track", { track: "Chords", filter: { kind: "band" } })).toMatch(/"low", "high"/);
+    expect(await bad(s, "edit_clip", { clip: 1, track: "Chords", filter_sweep: { from: 10 } })).toMatch(/filter_sweep\.to/);
+    // A build: a noise sweep that lasts as long as its note.
+    await ok(s, "add_track", { instrument: "sweep" });
+    await ok(s, "add_clip", { track: "Noise sweep", start_bar: 1, notes: [{ pitch: "C5", start: 0, length: 16 }] });
+    expect(midi(s).find((c) => c.name === "Noise sweep")?.length).toBe(16);
+  });
+});
+
 describe("the library", () => {
   it("lists every pattern and puts each in on a track of its own kind", async () => {
     const { s } = session();

@@ -4,7 +4,8 @@
  * instruments, drums and mixer as live playing, on the browser's "offline"
  * sound context, so the file sounds like what you heard.
  */
-import type { Song, Track } from "../model/types";
+import type { Clip, Song, Track } from "../model/types";
+import { fadeNode, shapedInput } from "./clipLevel";
 import type { Sound } from "./audioStore";
 import { instrumentById } from "./instruments";
 import { LIMITER_DELAY, Mixer, echoSeconds } from "./mixer";
@@ -82,6 +83,8 @@ export async function renderSong(song: Song, sound: (audioId: string) => Sound |
   const mixer = new Mixer(ctx, ctx.destination, false);
   mixer.sync(song);
   const tracks = new Map<string, Track>(song.tracks.map((t) => [t.id, t]));
+  const clips = new Map<string, Clip>(song.clips.map((c) => [c.id, c]));
+  const clipBeats = (clip: Clip) => (clip.kind === "midi" ? clip.length : secondsToBeats(clip.duration, song.bpm));
   const timeOf = (beat: number) => LEAD_IN + beatsToSeconds(beat - from, song.bpm);
 
   /** Schedule what starts between two times of the mixdown (seconds). */
@@ -93,8 +96,13 @@ export async function renderSong(song: Song, sound: (audioId: string) => Sound |
       const input = mixer.input(note.trackId);
       if (!track || !input) continue;
       const when = timeOf(note.beat);
-      instrumentById(track.instrument).startVoice(ctx, input, note.pitch, note.velocity, when).stop(when + beatsToSeconds(note.lengthBeats, song.bpm));
+      const clip = clips.get(note.clipId);
+      const shaped = clip && clip.kind === "midi" ? shapedInput(ctx, input, clip, clip.length, note.clipBeat, note.clipBeat + note.lengthBeats, (beat) => timeOf(clip.start + beat)) : null;
+      const length = beatsToSeconds(note.lengthBeats, song.bpm);
+      instrumentById(track.instrument).startVoice(ctx, shaped ?? input, note.pitch, note.velocity, when, length).stop(when + length);
     }
+    // The pump's dips and the filter sweeps, in time with the song (up to where the mixdown ends: the tail is left alone).
+    if (a < to) mixer.scheduleShaping(song, a, Math.min(b, to), timeOf, clipBeats);
     // Only the very first stretch picks up clips that are already under way.
     for (const event of audioClipsBetween(song, a, b, { cutAt: to, running: fromSeconds === 0 })) {
       const buffer = sound(event.audioId)?.buffer;
@@ -111,7 +119,11 @@ export async function renderSong(song: Song, sound: (audioId: string) => Sound |
       level.gain.linearRampToValueAtTime(gain, when + fade);
       level.gain.setValueAtTime(gain, when + duration - fade);
       level.gain.linearRampToValueAtTime(0, when + duration);
-      source.connect(level).connect(input);
+      const clip = clips.get(event.clipId);
+      const sinceStart = (seconds: number) => (clip && clip.kind === "audio" ? secondsToBeats(seconds - clip.offset, song.bpm) : 0);
+      const fades = clip ? fadeNode(ctx, clip, clipBeats(clip), sinceStart(event.offset), sinceStart(event.offset + duration), (beat) => when + beatsToSeconds(beat - sinceStart(event.offset), song.bpm)) : null;
+      if (fades) source.connect(level).connect(fades).connect(input);
+      else source.connect(level).connect(input);
       source.start(when, event.offset, duration);
     }
   };

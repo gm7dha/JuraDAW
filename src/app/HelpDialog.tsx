@@ -129,6 +129,21 @@ export function HelpDialog() {
           ))}
         </tbody>
       </table>
+      <h3 className="help-heading">Shaping the sound</h3>
+      <ul className="small help-steps">
+        <li>
+          <strong>A track's own effects</strong> are in the panel on the left, under Reverb and Echo: <em>Drive</em> (warmth, then grit, then fuzz), <em>Crush</em> (rough and lo-fi), a{" "}
+          <em>Filter</em> that cuts the top or the bottom of the sound, <em>Wobble</em> (a slow drift that widens it) and <em>Pump</em> (the volume dips on every beat). Double-click a slider to turn it
+          off.
+        </li>
+        <li>
+          <strong>A clip's own shape</strong>: click a clip for its volume, <em>Fade in</em> and <em>Fade out</em> — so a part swells in rather than switching on — and <em>Sweep the filter over this
+          clip</em>, which opens the track's filter up (or closes it down) while the clip plays.
+        </li>
+        <li>
+          <strong>For a build</strong>, add a track playing <em>Noise sweep</em> and draw one long note: it rises for as long as the note lasts (a note below middle C falls instead).
+        </li>
+      </ul>
       <h3 className="help-heading">Use JuraDAW with Claude</h3>
       <p className="small">
         Describe some music in plain English — say, "a slow blues in A with drums, a walking bass and piano chords" — and Claude writes it a part at a time, as tracks, clips and notes you

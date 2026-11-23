@@ -67,7 +67,7 @@ export function makePattern(pattern: LibraryPattern, values: Readonly<Record<str
 }
 
 /** The instruments that play bass lines (a bass line on a piano or strings sounds wrong, and the other way round). */
-export const BASS_INSTRUMENTS: readonly string[] = ["bass", "synth-bass"];
+export const BASS_INSTRUMENTS: readonly string[] = ["bass", "synth-bass", "sub-bass", "growl-bass"];
 
 /**
  * Whether a pattern suits a track playing this instrument: drum beats only go on a drum kit, bass lines only on a

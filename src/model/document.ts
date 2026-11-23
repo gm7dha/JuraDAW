@@ -4,6 +4,7 @@
  * file — the song plus its sounds as base64 WAV. Pure: works in Node and in
  * the browser.
  */
+import { cleanFilter, cleanSweep, filterIsOn } from "./shaping";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, TRACK_COLOURS } from "./types";
 import type { AudioClip, AudioInfo, Clip, Loop, MidiClip, Note, Song, Track, TrackKind } from "./types";
 
@@ -59,15 +60,22 @@ export function newSong(name = DEFAULT_NAME): Song {
 /** The names shown for the built-in instruments (ids as in src/audio/instruments.ts). */
 const INSTRUMENT_LABELS: Record<string, string> = {
   piano: "Piano",
+  "felt-piano": "Soft piano",
   "electric-piano": "Electric piano",
   organ: "Organ",
   strings: "Strings",
   pad: "Pad",
+  choir: "Choir",
   bass: "Bass",
   "synth-bass": "Synth bass",
+  "sub-bass": "Sub bass",
+  "growl-bass": "Gritty bass",
   lead: "Lead",
+  supersaw: "Big saw",
+  wobble: "Wobbly synth",
   pluck: "Pluck",
   bells: "Bells",
+  sweep: "Noise sweep",
   drums: "Drums",
 };
 
@@ -159,7 +167,34 @@ function parseTrack(v: unknown, taken: Set<string>, before: readonly Track[]): T
     instrument,
     reverb: within(v.reverb, 0, 1, kind === "instrument" ? DEFAULT_REVERB : 0),
     echo: within(v.echo, 0, 1, 0),
+    ...parseEffects(v),
   };
+}
+
+/** A track's own effects from a file: only the ones that are switched on are kept. */
+function parseEffects(v: Record<string, unknown>): Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump"> {
+  const out: Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump"> = {};
+  for (const key of ["drive", "crush", "chorus", "pump"] as const) {
+    const amount = within(v[key], 0, 1, 0);
+    if (amount > 0) out[key] = amount;
+  }
+  if (isObject(v.filter)) {
+    const filter = cleanFilter(v.filter as Partial<Track["filter"] & object>);
+    if (filterIsOn(filter) || filter.resonance > 0) out.filter = filter;
+  }
+  return out;
+}
+
+/** A clip's fades and filter sweep from a file (left out when there are none). */
+function parseShape(v: Record<string, unknown>): Pick<Clip, "fadeIn" | "fadeOut" | "sweep"> {
+  const out: Pick<Clip, "fadeIn" | "fadeOut" | "sweep"> = {};
+  const fadeIn = within(v.fadeIn, 0, MOST_BEATS, 0);
+  const fadeOut = within(v.fadeOut, 0, MOST_BEATS, 0);
+  if (fadeIn >= MIN_LENGTH) out.fadeIn = fadeIn;
+  if (fadeOut >= MIN_LENGTH) out.fadeOut = fadeOut;
+  const sweep = cleanSweep(v.sweep);
+  if (sweep) out.sweep = sweep;
+  return out;
 }
 
 function parseAudioInfo(v: unknown, taken: Set<string>): AudioInfo | null {
@@ -205,7 +240,9 @@ function parseClip(v: unknown, taken: Set<string>, tracks: ReadonlyMap<string, T
           .map((n) => parseNote(n, taken))
           .filter((n): n is Note => !!n)
       : [];
-    const clip: MidiClip = { id, trackId: track.id, name: text(v.name, track.name, 80), start, kind: "midi", length: within(v.length, MIN_LENGTH, MOST_BEATS, 4), notes };
+    const clip: MidiClip = { id, trackId: track.id, name: text(v.name, track.name, 80), start, kind: "midi", length: within(v.length, MIN_LENGTH, MOST_BEATS, 4), notes, ...parseShape(v) };
+    const gain = within(v.gain, 0, 2, 1);
+    if (gain !== 1) clip.gain = gain;
     return clip;
   }
   if (v.kind === "audio") {
@@ -225,6 +262,7 @@ function parseClip(v: unknown, taken: Set<string>, tracks: ReadonlyMap<string, T
       offset,
       duration,
       gain: within(v.gain, 0, 2, 1),
+      ...parseShape(v),
     };
     return clip;
   }
