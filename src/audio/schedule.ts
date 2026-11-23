@@ -15,6 +15,9 @@ export interface NoteEvent {
   velocity: number;
   beat: number;
   lengthBeats: number;
+  /** The clip the note is in, and how many beats after the clip's start the note begins. */
+  clipId: string;
+  clipBeat: number;
 }
 
 /** A stretch of a sound to start. `beat` is when (from the start of the song); `offset` and `duration` are seconds of the sound. */
@@ -87,7 +90,7 @@ export function notesBetween(song: Song, fromBeat: number, toBeat: number, optio
       if (beat < fromBeat || beat >= until) continue;
       const lengthBeats = Math.min(note.length, clipEnd - beat, cutAt - beat);
       if (!(lengthBeats > 0)) continue;
-      events.push({ trackId: clip.trackId, pitch: note.pitch, velocity: note.velocity, beat, lengthBeats });
+      events.push({ trackId: clip.trackId, pitch: note.pitch, velocity: note.velocity, beat, lengthBeats, clipId: clip.id, clipBeat: note.start });
     }
   }
   return events.sort((a, b) => a.beat - b.beat || a.pitch - b.pitch);

@@ -7,6 +7,7 @@
  */
 import { FILE_EXTENSION, MOST_BEATS, newSong, newTrack, readSongFile, songFileText, instrumentLabel } from "../model/document";
 import * as edits from "../model/edits";
+import { clipGain, effectsOf, filterIsOn } from "../model/shaping";
 import { DRUM_PITCHES, clipEnd, clipLength, drumName, pitchName, songLength, timeText, beatsToSeconds } from "../model/time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, type Clip, type MidiClip, type Note, type Song, type Track } from "../model/types";
 import { LIBRARY, cleanValues, findPattern, makePattern, patternSuitsInstrument } from "../library/catalogue";
@@ -18,7 +19,7 @@ import { checkFree, fileNameFor, needFolder, say, writeOut, type ToolDef, type T
 export type { ToolDef, ToolResult } from "./toolKit";
 
 /** The built-in instruments (the ids of src/audio/instruments.ts INSTRUMENTS, kept in step by tests/mcpTools). */
-export const INSTRUMENT_IDS = ["piano", "electric-piano", "organ", "strings", "pad", "bass", "synth-bass", "lead", "pluck", "bells", "drums"] as const;
+export const INSTRUMENT_IDS = ["piano", "felt-piano", "electric-piano", "organ", "strings", "pad", "choir", "bass", "synth-bass", "sub-bass", "growl-bass", "lead", "supersaw", "wobble", "pluck", "bells", "sweep", "drums"] as const;
 
 /** How songs are described to the tools: sent to Claude with the server's instructions, and by the format_guide tool. */
 export const FORMAT_GUIDE = `How JuraDAW songs work:
@@ -29,6 +30,10 @@ export const FORMAT_GUIDE = `How JuraDAW songs work:
 - On a "drums" track the pitch can be a drum's name: ${DRUM_PITCHES.map((d) => `"${d.name.toLowerCase()}"`).join(", ")} (drum notes are short: length 0.25 if left out).
 - Refer to a track by its name (or its number in describe_song), and to a clip by its name with "track", its number on that track (1 = the first), or its id.
 - Two clips can't lie on top of each other on one track.
+- Each track has its own effects, all off unless set (amounts are per cent): "drive" (warmth → grit → fuzz), "crush" (lo-fi, bit-crushed), "filter" {"kind": "low" (cuts the top: muffled) or "high" (cuts the bottom: thin), "cutoff": 0–100 (where it cuts, from the very bottom to the very top of hearing), "resonance": 0–100 (a ringing edge)}, "wobble" (a slow pitch drift that widens, like worn tape) and "pump" (the volume dips on every beat and swells back, like side-chained dance music) — besides "reverb" and "echo".
+- Each clip can have its own "volume" (per cent, 100 = as played), "fade_in" and "fade_out" (beats: it swells in / dies away instead of switching on and off) and a "filter_sweep" {"from", "to"} (0–100 as the filter's cutoff): the track's filter moves from one to the other while the clip plays — low to high opens up for a build.
+- The "sweep" instrument is a rush of noise for builds: a note from C4 up rises and swells for as long as the note lasts (a 4-bar note = a 4-bar build; higher notes end higher); a note below C4 falls and dies away.
+- For a modern, atmospheric sound: felt-piano, choir, pad and wobble with plenty of reverb for the soft side; sub-bass under growl-bass or synth-bass, supersaw chords with pump, drive or crush on drums, and a sweep into each new section for the hard side.
 - Good habits: describe_song first; build a song a part at a time (drums, bass, chords, tune) with each part on its own track; use list_library_patterns / insert_library_pattern for ready-made beats, bass lines and chord sequences that fit together when given the same key, scale and chords; keep bass around C1–C3, chords around C3–C5 and tunes around C4–C6; vary velocity a little so it doesn't sound mechanical.
 - The user hears the result in JuraDAW (https://gm7dha.github.io/JuraDAW/): live if they clicked "Connect to Claude" there (see live_status), otherwise save_song and they open the .juradaw file. Recording sound and exporting a WAV sound file are done by the user in JuraDAW; export_midi makes a standard MIDI file here.`;
 
@@ -160,13 +165,35 @@ function describeNotes(song: Song, clip: MidiClip, most: number): string[] {
   return lines;
 }
 
+/** A track's own effects in words (nothing when they're all off). */
+function effectsWords(track: Track): string {
+  const e = effectsOf(track);
+  const words: string[] = [];
+  if (e.drive > 0) words.push(`drive ${pct(e.drive)}`);
+  if (e.crush > 0) words.push(`crush ${pct(e.crush)}`);
+  if (filterIsOn(e.filter) || e.filter.resonance > 0) words.push(`filter ${e.filter.kind} at ${pct(e.filter.cutoff)}${e.filter.resonance > 0 ? ` (resonance ${pct(e.filter.resonance)})` : ""}`);
+  if (e.chorus > 0) words.push(`wobble ${pct(e.chorus)}`);
+  if (e.pump > 0) words.push(`pump ${pct(e.pump)}`);
+  return words.length ? `, ${words.join(", ")}` : "";
+}
+
+/** A clip's own volume, fades and sweep in words (nothing when it has none). */
+function shapeWords(clip: Clip): string {
+  const words: string[] = [];
+  if (clipGain(clip) !== 1) words.push(`volume ${pct(clipGain(clip))}`);
+  if (clip.fadeIn) words.push(`fades in over ${r6(clip.fadeIn)} beats`);
+  if (clip.fadeOut) words.push(`fades out over ${r6(clip.fadeOut)} beats`);
+  if (clip.sweep) words.push(`filter sweep ${pct(clip.sweep.from)} to ${pct(clip.sweep.to)}`);
+  return words.length ? `; ${words.join(", ")}` : "";
+}
+
 function describeClip(song: Song, clip: Clip, index: number): string {
   const len = clipLength(clip, song.bpm);
   const where = `bar ${barOf(song, clip.start)} to ${barOf(song, clip.start + len)}`;
-  if (clip.kind === "audio") return `   clip ${index} "${clip.name}" (id ${clip.id}): a recording, ${where}`;
+  if (clip.kind === "audio") return `   clip ${index} "${clip.name}" (id ${clip.id}): a recording, ${where}${shapeWords(clip)}`;
   const pitches = clip.notes.map((n) => n.pitch);
   const range = pitches.length ? (isDrums(song, clip.trackId) ? "" : `, ${pitchName(Math.min(...pitches))} to ${pitchName(Math.max(...pitches))}`) : "";
-  return `   clip ${index} "${clip.name}" (id ${clip.id}): ${where}, ${plural(clip.notes.length, "note")}${range}`;
+  return `   clip ${index} "${clip.name}" (id ${clip.id}): ${where}, ${plural(clip.notes.length, "note")}${range}${shapeWords(clip)}`;
 }
 
 export function describeSong(song: Song, opts: { notes?: boolean; only?: Clip } = {}): string {
@@ -179,7 +206,7 @@ export function describeSong(song: Song, opts: { notes?: boolean; only?: Clip } 
     if (opts.only && opts.only.trackId !== t.id) return;
     const pan = Math.abs(t.pan) < 0.005 ? "middle" : `${pct(Math.abs(t.pan))} ${t.pan < 0 ? "left" : "right"}`;
     lines.push(
-      `${i + 1}. "${t.name}" — ${t.kind === "audio" ? "a sound track (recordings)" : `plays ${t.instrument} (${instrumentLabel(t.instrument)})`}; volume ${pct(t.volume)}, ${pan}, reverb ${pct(t.reverb)}, echo ${pct(t.echo)}${t.mute ? ", MUTED" : ""}${t.solo ? ", SOLO" : ""}`,
+      `${i + 1}. "${t.name}" — ${t.kind === "audio" ? "a sound track (recordings)" : `plays ${t.instrument} (${instrumentLabel(t.instrument)})`}; volume ${pct(t.volume)}, ${pan}, reverb ${pct(t.reverb)}, echo ${pct(t.echo)}${effectsWords(t)}${t.mute ? ", MUTED" : ""}${t.solo ? ", SOLO" : ""}`,
     );
     const clips = clipsOn(song, t.id);
     if (!clips.length) lines.push("   (no clips)");
@@ -199,6 +226,17 @@ const NOTE_SCHEMA = {
   type: "array",
   description: 'Notes: [{"pitch": "C4", "start": 0, "length": 1, "velocity": 96}, …]. start and length are in beats from the clip\'s start; pitch is a note name, a MIDI number, or a drum\'s name on a drums track.',
   items: { type: "object", properties: { pitch: {}, start: { type: "number" }, length: { type: "number" }, velocity: { type: "number" } }, required: ["pitch", "start"] },
+};
+const FILTER_SCHEMA = {
+  type: "object",
+  description: 'The track\'s filter: {"kind": "low" (cuts the top) or "high" (cuts the bottom), "cutoff": 0–100, "resonance": 0–100}. {"kind": "low", "cutoff": 100} is off.',
+  properties: { kind: { type: "string", enum: ["low", "high"] }, cutoff: { type: "number" }, resonance: { type: "number" } },
+};
+const SHAPE_PROPS = {
+  volume: { type: "number", description: "The clip's own volume, per cent 0–200 (100 = as played)." },
+  fade_in: { type: "number", description: "Beats over which the clip swells in from silence (0 = none)." },
+  fade_out: { type: "number", description: "Beats over which it dies away at its end (0 = none)." },
+  filter_sweep: { description: 'Move the track\'s filter while the clip plays: {"from": 20, "to": 100} (0–100 as the filter\'s cutoff), or null to take a sweep off.' },
 };
 const TRACK_REF = { description: "The track: its name, or its number in describe_song." };
 const CLIP_REF = { description: 'The clip: its name, its number on the track (with "track"; 1 = the first), or its id.' };
@@ -408,23 +446,30 @@ export const TOOLS: ToolDef[] = [
         pan: { type: "number", description: "−100 (left) to 100 (right); 0 is the middle." },
         reverb: { type: "number", description: "Per cent, 0–100." },
         echo: { type: "number", description: "Per cent, 0–100." },
+        drive: { type: "number", description: "Per cent, 0–100: warmth, then grit, then fuzz." },
+        crush: { type: "number", description: "Per cent, 0–100: lo-fi, bit-crushed." },
+        filter: FILTER_SCHEMA,
+        wobble: { type: "number", description: "Per cent, 0–100: a slow pitch drift that widens the sound." },
+        pump: { type: "number", description: "Per cent, 0–100: the volume dips on every beat and swells back." },
       },
       required: ["instrument"],
     },
     run(s, a) {
-      noExtras(a, ["instrument", "name", "volume", "pan", "reverb", "echo"], "add_track");
+      noExtras(a, ["instrument", "name", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump"], "add_track");
       if (s.song.tracks.length >= MOST_TRACKS) throw new InputError(`A song can have at most ${MOST_TRACKS} tracks. Remove one first, or put this part on a track that's there.`);
       const made = newTrack("instrument", instrumentOf(a.instrument, "instrument"), s.song.tracks);
-      const track: Track = { ...made, ...trackPatch(a, "add_track") };
-      if (s.song.tracks.some((t) => sameName(t.name, track.name))) throw new InputError(`There's already a track called "${track.name}". Give this one another name.`);
-      s.commit(edits.addTrack(s.song, track));
+      const patch = trackPatch(a, "add_track");
+      if (patch.name !== undefined && s.song.tracks.some((t) => sameName(t.name, patch.name ?? ""))) throw new InputError(`There's already a track called "${patch.name}". Give this one another name.`);
+      const added = edits.updateTrack(edits.addTrack(s.song, made), made.id, patch);
+      const track = added.tracks.find((t) => t.id === made.id) ?? made;
+      s.commit(added);
       return say(`Added track ${s.song.tracks.length}, "${track.name}", playing ${track.instrument}. Put notes on it with add_clip.`);
     },
   },
   {
     name: "edit_track",
     title: "Change a track",
-    description: "Change a track's name, instrument, volume, left–right, reverb, echo, mute or solo.",
+    description: "Change a track's name, instrument, volume, left–right, reverb, echo, its own effects (drive, crush, filter, wobble, pump), mute or solo.",
     inputSchema: {
       type: "object",
       properties: {
@@ -435,13 +480,18 @@ export const TOOLS: ToolDef[] = [
         pan: { type: "number" },
         reverb: { type: "number" },
         echo: { type: "number" },
+        drive: { type: "number", description: "Per cent, 0–100: warmth, then grit, then fuzz." },
+        crush: { type: "number", description: "Per cent, 0–100: lo-fi, bit-crushed." },
+        filter: FILTER_SCHEMA,
+        wobble: { type: "number", description: "Per cent, 0–100: a slow pitch drift that widens the sound." },
+        pump: { type: "number", description: "Per cent, 0–100: the volume dips on every beat and swells back." },
         mute: { type: "boolean" },
         solo: { type: "boolean" },
       },
       required: ["track"],
     },
     run(s, a) {
-      noExtras(a, ["track", "name", "instrument", "volume", "pan", "reverb", "echo", "mute", "solo"], "edit_track");
+      noExtras(a, ["track", "name", "instrument", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "mute", "solo"], "edit_track");
       const track = trackOf(s.song, a.track, "edit_track");
       const patch: edits.TrackPatch = trackPatch(a, "edit_track");
       if (a.instrument !== undefined) {
@@ -482,11 +532,12 @@ export const TOOLS: ToolDef[] = [
         bars: { type: "number", description: "How many bars long." },
         name: { type: "string" },
         notes: NOTE_SCHEMA,
+        ...SHAPE_PROPS,
       },
       required: ["track"],
     },
     run(s, a) {
-      noExtras(a, ["track", "start_bar", "bars", "name", "notes"], "add_clip");
+      noExtras(a, ["track", "start_bar", "bars", "name", "notes", "volume", "fade_in", "fade_out", "filter_sweep"], "add_clip");
       const song = s.song;
       const track = trackOf(song, a.track, "add_clip");
       if (track.kind !== "instrument") throw new InputError(`"${track.name}" is a sound track (recordings): notes go on an instrument track. Add one with add_track.`);
@@ -504,8 +555,10 @@ export const TOOLS: ToolDef[] = [
       needRoom(song, track, start, length, "add_clip");
       const clip: MidiClip = { ...edits.makeMidiClip(track, start, length, typeof a.name === "string" && a.name.trim() ? text(a.name, "name") : track.name), notes: edits.makeNotes(notes.map((n) => ({ ...n, length: Math.min(n.length, r6(length - n.start)) }))) };
       const next = edits.addClips(song, [clip]);
-      if (!s.commit(next)) throw new InputError("The song is full (too many clips). Remove some first.");
-      return say(`Added clip "${clip.name}" (id ${clip.id}) to "${track.name}": bar ${barOf(song, start)} to ${barOf(song, start + length)}, ${plural(notes.length, "note")}.`);
+      if (next === song) throw new InputError("The song is full (too many clips). Remove some first.");
+      s.commit(edits.updateClip(next, clip.id, shapePatch(a, "add_clip")));
+      const now = edits.findClip(s.song, clip.id) ?? clip;
+      return say(`Added clip "${clip.name}" (id ${clip.id}) to "${track.name}": bar ${barOf(song, start)} to ${barOf(song, start + length)}, ${plural(notes.length, "note")}${shapeWords(now)}.`);
     },
   },
   {
@@ -553,7 +606,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "edit_clip",
     title: "Change a clip",
-    description: "Rename a clip, move it (to another bar or track), make it longer or shorter, or change all its notes at once: transpose (semitones up or down), set every velocity, or tidy the timing onto a grid.",
+    description: "Rename a clip, move it (to another bar or track), make it longer or shorter, change all its notes at once (transpose, set every velocity, tidy the timing onto a grid), or shape it: its own volume, a fade in or out, a filter sweep.",
     inputSchema: {
       type: "object",
       properties: {
@@ -566,10 +619,11 @@ export const TOOLS: ToolDef[] = [
         transpose: { type: "number", description: "Semitones: 12 is an octave up, −12 an octave down." },
         velocity: { type: "number", description: "Every note's velocity, 1–127." },
         tidy_timing: { type: "number", description: "Move note starts onto a grid of this many beats (0.25 = sixteenth notes, 0.5 = eighths, 1 = beats)." },
+        ...SHAPE_PROPS,
       },
     },
     run(s, a) {
-      noExtras(a, ["clip", "track", "name", "start_bar", "bars", "to_track", "transpose", "velocity", "tidy_timing"], "edit_clip");
+      noExtras(a, ["clip", "track", "name", "start_bar", "bars", "to_track", "transpose", "velocity", "tidy_timing", "volume", "fade_in", "fade_out", "filter_sweep"], "edit_clip");
       let song = s.song;
       const clip = clipOf(song, a, "edit_clip");
       const did: string[] = [];
@@ -613,7 +667,13 @@ export const TOOLS: ToolDef[] = [
           did.push("timing tidied");
         }
       }
-      if (!did.length) throw new InputError("edit_clip: say what to change: name, start_bar, bars, to_track, transpose, velocity or tidy_timing.");
+      const shape = shapePatch(a, "edit_clip");
+      if (Object.keys(shape).length) {
+        song = edits.updateClip(song, clip.id, shape);
+        const now = edits.findClip(song, clip.id);
+        did.push(now && shapeWords(now) ? shapeWords(now).slice(2) : "its own volume, fades and sweep taken off");
+      }
+      if (!did.length) throw new InputError("edit_clip: say what to change: name, start_bar, bars, to_track, transpose, velocity, tidy_timing, volume, fade_in, fade_out or filter_sweep.");
       if (!s.commit(song)) return say(`Nothing was changed: "${clip.name}" is like that already.`);
       return say(`"${clip.name}": ${did.join(", ")}.`);
     },
@@ -730,6 +790,39 @@ function trackPatch(a: Obj, where: string): edits.TrackPatch {
   if (reverb !== undefined) patch.reverb = reverb;
   const echo = share(a.echo, `${where}.echo`);
   if (echo !== undefined) patch.echo = echo;
+  for (const [given, key] of [["drive", "drive"], ["crush", "crush"], ["wobble", "chorus"], ["pump", "pump"]] as const) {
+    const amount = share(a[given], `${where}.${given}`);
+    if (amount !== undefined) patch[key] = amount;
+  }
+  if (a.filter !== undefined && a.filter !== null) {
+    const f = object(a.filter, `${where}.filter`);
+    noExtras(f, ["kind", "cutoff", "resonance"], `${where}.filter`);
+    const filter: NonNullable<edits.TrackPatch["filter"]> = {};
+    if (f.kind !== undefined) filter.kind = oneOf(f.kind, ["low", "high"] as const, `${where}.filter.kind`);
+    const cutoff = share(f.cutoff, `${where}.filter.cutoff`);
+    if (cutoff !== undefined) filter.cutoff = cutoff;
+    const resonance = share(f.resonance, `${where}.filter.resonance`);
+    if (resonance !== undefined) filter.resonance = resonance;
+    patch.filter = filter;
+  } else if (a.filter === null) patch.filter = { kind: "low", cutoff: 1, resonance: 0 };
+  return patch;
+}
+
+/** A clip's own volume, fades and filter sweep from what Claude gave (only the ones given). */
+function shapePatch(a: Obj, where: string): edits.ClipPatch {
+  const patch: edits.ClipPatch = {};
+  const volume = optionalNum(a.volume, `${where}.volume (per cent)`, { min: 0, max: 200 });
+  if (volume !== undefined) patch.gain = r6(volume / 100);
+  const fadeIn = optionalNum(a.fade_in, `${where}.fade_in (beats)`, { min: 0, max: MOST_BEATS });
+  if (fadeIn !== undefined) patch.fadeIn = fadeIn;
+  const fadeOut = optionalNum(a.fade_out, `${where}.fade_out (beats)`, { min: 0, max: MOST_BEATS });
+  if (fadeOut !== undefined) patch.fadeOut = fadeOut;
+  if (a.filter_sweep === null) patch.sweep = null;
+  else if (a.filter_sweep !== undefined) {
+    const w = object(a.filter_sweep, `${where}.filter_sweep`);
+    noExtras(w, ["from", "to"], `${where}.filter_sweep`);
+    patch.sweep = { from: num(w.from, `${where}.filter_sweep.from (per cent)`, { min: 0, max: 100 }) / 100, to: num(w.to, `${where}.filter_sweep.to (per cent)`, { min: 0, max: 100 }) / 100 };
+  }
   return patch;
 }
 

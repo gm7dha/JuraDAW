@@ -6,7 +6,8 @@
  * it asks the song afresh each time, edits and tempo changes are heard
  * while it plays, and a loop goes round without a gap.
  */
-import type { AudioClip, Song, Track } from "../model/types";
+import type { AudioClip, Clip, Song, Track } from "../model/types";
+import { fadeNode, shapedInput } from "./clipLevel";
 import type { Sound } from "./audioStore";
 import { instrumentById } from "./instruments";
 import { playClick } from "./metronome";
@@ -71,7 +72,7 @@ interface PlayingClip {
 
 /** What makes a clip the same clip for playing purposes: if any of this changes, it's started afresh. */
 function signatureOf(clip: AudioClip): string {
-  return `${clip.trackId}|${clip.audioId}|${clip.start}|${clip.offset}|${clip.duration}`;
+  return `${clip.trackId}|${clip.audioId}|${clip.start}|${clip.offset}|${clip.duration}|${clip.fadeIn ?? 0}|${clip.fadeOut ?? 0}`;
 }
 
 export class Transport {
@@ -129,6 +130,7 @@ export class Transport {
     for (const clip of this.clips.values()) this.endClip(clip, now);
     this.clips.clear();
     this.segments = [];
+    this.host.mixer.releaseShaping(this.host.song());
   }
 
   /** Where Play last started from. */
@@ -244,16 +246,24 @@ export class Transport {
     const { ctx, mixer } = this.host;
     const timeOf = (beat: number) => time + beatsToSeconds(beat - from, this.bpm);
     const tracks = new Map<string, Track>(song.tracks.map((t) => [t.id, t]));
+    const clips = new Map<string, Clip>(song.clips.map((c) => [c.id, c]));
 
     for (const note of notesBetween(song, from, to, { cutAt, everyTrack: true })) {
       const when = timeOf(note.beat);
       const track = tracks.get(note.trackId);
       const input = mixer.input(note.trackId);
       if (!track || !input || when < now - TOO_LATE) continue;
-      const voice = instrumentById(track.instrument).startVoice(ctx, input, note.pitch, note.velocity, when);
-      voice.stop(Math.max(when, now) + beatsToSeconds(note.lengthBeats, this.bpm));
-      this.track(voice);
+      // A clip with a volume or fades of its own gives each of its notes a volume that follows the clip's shape.
+      const clip = clips.get(note.clipId);
+      const shaped = clip && clip.kind === "midi" ? shapedInput(ctx, input, clip, clip.length, note.clipBeat, note.clipBeat + note.lengthBeats, (b) => timeOf(clip.start + b)) : null;
+      const seconds = beatsToSeconds(note.lengthBeats, this.bpm);
+      const voice = instrumentById(track.instrument).startVoice(ctx, shaped ?? input, note.pitch, note.velocity, when, seconds);
+      voice.stop(Math.max(when, now) + seconds);
+      this.track(voice, shaped);
     }
+
+    // The pump's dips and the filter sweeps, in time with the song.
+    mixer.scheduleShaping(song, from, to, timeOf, (clip) => (clip.kind === "midi" ? clip.length : secondsToBeats(clip.duration, this.bpm)));
 
     for (const event of audioClipsBetween(song, from, to, { running: true, cutAt, everyTrack: true })) {
       this.startClip(event, timeOf(event.beat), now);
@@ -269,9 +279,13 @@ export class Transport {
   }
 
   /** Remember a voice until it ends, so Stop can silence it; too many at once and the oldest go. */
-  private track(voice: Voice): void {
+  private track(voice: Voice, own: AudioNode | null = null): void {
     this.voices.add(voice);
-    voice.onended = () => this.voices.delete(voice);
+    voice.onended = () => {
+      this.voices.delete(voice);
+      // The note's own volume (a shaped clip's) goes with it.
+      own?.disconnect();
+    };
     if (this.voices.size > MOST_VOICES) {
       const oldest = this.voices.values().next().value;
       if (oldest) {
@@ -310,7 +324,11 @@ export class Transport {
     level.gain.linearRampToValueAtTime(gain, start + CLIP_FADE);
     level.gain.setValueAtTime(gain, start + duration - CLIP_FADE);
     level.gain.linearRampToValueAtTime(0, start + duration);
-    source.connect(level).connect(input);
+    // The clip's own swell in and dying away, on top of the tiny fades that stop it clicking.
+    const sinceStart = (seconds: number) => secondsToBeats(seconds - clip.offset, this.bpm);
+    const fades = fadeNode(ctx, clip, secondsToBeats(clip.duration, this.bpm), sinceStart(offset), sinceStart(offset + duration), (b) => start + beatsToSeconds(b - sinceStart(offset), this.bpm));
+    if (fades) source.connect(level).connect(fades).connect(input);
+    else source.connect(level).connect(input);
     source.start(start, offset, duration);
 
     const entry: PlayingClip = { signature, lap: this.lap, endTime: start + duration, source, level, gain: event.gain };
@@ -318,6 +336,7 @@ export class Transport {
     source.onended = () => {
       source.disconnect();
       level.disconnect();
+      fades?.disconnect();
     };
   }
 }

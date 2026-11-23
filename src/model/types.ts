@@ -26,6 +26,33 @@ export interface Track {
   reverb: number;
   /** How much goes to the shared echo, 0–1. */
   echo: number;
+  // The track's own effects, in the order the sound goes through them. Left out = off (see src/model/shaping.ts).
+  /** Drive: warmth, then grit, then fuzz. 0–1. */
+  drive?: number;
+  /** Crush: the rough, lo-fi sound of an old sampler or games console. 0–1. */
+  crush?: number;
+  /** The filter: takes away the top of the sound (kind "low") or the bottom ("high"). */
+  filter?: TrackFilter;
+  /** Wobble: a slow drift in pitch that widens and thickens the sound, like a worn tape. 0–1. */
+  chorus?: number;
+  /** Pump: dips the volume on every beat and lets it swell back, as dance music does. 0–1. */
+  pump?: number;
+}
+
+export interface TrackFilter {
+  /** "low" lets the low part through (a low-pass: muffles); "high" lets the high part through (a high-pass: thins). */
+  kind: "low" | "high";
+  /** Where it cuts, 0 (the very bottom) – 1 (the very top). A "low" filter at 1, or a "high" one at 0, changes nothing. */
+  cutoff: number;
+  /** A ringing emphasis at the cut, 0–1. */
+  resonance: number;
+}
+
+/** A filter sweep over a clip: the track's filter moves from one place to another while the clip plays. */
+export interface Sweep {
+  /** Cutoff at the clip's start and at its end, 0–1 (as TrackFilter.cutoff). */
+  from: number;
+  to: number;
 }
 
 export interface Note {
@@ -44,6 +71,12 @@ interface ClipBase {
   name: string;
   /** Beats from the start of the song, ≥ 0. */
   start: number;
+  /** Beats over which the clip swells in from silence at its start (left out = none). */
+  fadeIn?: number;
+  /** Beats over which it dies away to silence at its end (left out = none). */
+  fadeOut?: number;
+  /** Moves the track's filter while the clip plays (left out = the filter stays where the track has it). */
+  sweep?: Sweep;
 }
 
 /** A block of notes on an instrument track. */
@@ -52,6 +85,8 @@ export interface MidiClip extends ClipBase {
   /** Beats, > 0. Notes past the end aren't played. */
   length: number;
   notes: Note[];
+  /** 0–2, 1 = as played (left out = 1). */
+  gain?: number;
 }
 
 /** A stretch of a recording or sound file on an audio track. It plays at its own speed whatever the tempo. */

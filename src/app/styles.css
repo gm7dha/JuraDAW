@@ -3286,3 +3286,8 @@ button.display-button {
     display: none;
   }
 }
+
+/* The track's own effects in the side panel. */
+.filter-kind {
+  margin: 4px 0 6px;
+}

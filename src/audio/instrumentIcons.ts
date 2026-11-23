@@ -48,6 +48,22 @@ export const ICONS = {
   bells: svg(
     `<path d="M24 6v3"/><path d="M11 34c3-3 4-7 4-13a9 9 0 0 1 18 0c0 6 1 10 4 13z"/><path d="M20.5 39a3.6 3.6 0 0 0 7 0"/><path d="M40 12c1.5 2 2.5 4.5 2.5 7M8 12c-1.5 2-2.5 4.5-2.5 7"/>`,
   ),
+  /** An upright piano, seen from the front. */
+  "felt-piano": svg(`<rect x="8" y="8" width="32" height="32" rx="3"/><path d="M8 25h32M8 31h32"/><path d="M14 25v6M20 25v6M26 25v6M32 25v6"/><path d="M13 40v3M35 40v3"/><path d="M19 16h10" opacity="0.6"/>`),
+  /** Three singers. */
+  choir: svg(
+    `<circle cx="12" cy="16" r="4.5"/><circle cx="24" cy="13" r="4.5"/><circle cx="36" cy="16" r="4.5"/><path d="M4 40c0-9 3.5-14 8-14s8 5 8 14M16 40c0-10 3.5-17 8-17s8 7 8 17M28 40c0-9 3.5-14 8-14s8 5 8 14"/>`,
+  ),
+  /** A slow, deep sine wave. */
+  "sub-bass": svg(`<rect x="5" y="8" width="38" height="32" rx="4"/><path d="M10 24c4.5-13 9.5-13 14 0s9.5 13 14 0"/>`),
+  /** A jagged, torn wave. */
+  "growl-bass": svg(`<rect x="5" y="8" width="38" height="32" rx="4"/><path d="M10 30l4-12 3 9 3-13 4 15 3-9 3 10 4-14 4 12"/>`),
+  /** Sawtooth waves stacked up. */
+  supersaw: svg(`<path d="M5 20 14 8v12l9-12v12l9-12v12l9-12"/><path d="M5 31 14 19v12l9-12v12l9-12v12l9-12" opacity="0.65"/><path d="M5 42 14 30v12l9-12v12l9-12v12l9-12" opacity="0.35"/>`),
+  /** A tape reel. */
+  wobble: svg(`<circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><circle cx="24" cy="13.5" r="3.2"/><circle cx="14.9" cy="29.3" r="3.2"/><circle cx="33.1" cy="29.3" r="3.2"/>`),
+  /** A rush of noise getting bigger. */
+  sweep: svg(`<path d="M5 38c10-1 22-6 37-27"/><path d="M34 11h8v8"/><path d="M8 30v2M14 26v4M20 21v6M26 16v7" opacity="0.6"/>`),
   /** A drum and sticks. */
   drums: svg(
     `<ellipse cx="24" cy="23" rx="15" ry="5.5"/><path d="M9 23v12c0 3 6.7 5.5 15 5.5s15-2.5 15-5.5V23"/><path d="M15 28v11M24 29v11.5M33 28v11"/><path d="M6 6l14 13M42 6 28 19"/>`,

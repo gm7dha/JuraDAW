@@ -147,6 +147,9 @@ const chord = (names, start) => names.map((pitch) => ({ pitch, start, length: 4,
 const added = text(await call("add_clip", { track: "Chords", notes: [...chord(["A3", "C4", "E4"], 0), ...chord(["F3", "A3", "C4"], 4), ...chord(["C4", "E4", "G4"], 8), ...chord(["G3", "B3", "D4"], 12)] }));
 check(/bar 1 to 5, 12 notes/.test(added), `The chords clip isn't as expected:\n${added}`);
 await call("repeat_clip", { track: "Chords", clip: 1, times: 1 });
+// The track's own effects and a clip's shape.
+await call("edit_track", { track: "Chords", drive: 25, pump: 50, filter: { kind: "low", cutoff: 80, resonance: 20 } });
+await call("edit_clip", { track: "Chords", clip: 1, fade_in: 4, filter_sweep: { from: 30, to: 100 } });
 const described = text(await call("describe_song", { notes: true }));
 check(/Song "CI song": 100 beats a minute, 4 beats in a bar/.test(described), `describe_song doesn't show the song:\n${described}`);
 check(/plays drums/.test(described) && /"Chords" — plays piano/.test(described) && /beat 0: A3, 4 long, velocity 80/.test(described), `describe_song doesn't show the tracks and notes:\n${described}`);
@@ -159,6 +162,8 @@ await call("save_song", {});
 const saved = join(songs, "CI song.juradaw");
 check(existsSync(saved), `No song was saved at ${saved}.`);
 const file = JSON.parse(readFileSync(saved, "utf8"));
+const chords = file.song?.tracks?.find((t) => t.name === "Chords");
+check(chords?.drive === 0.25 && chords.pump === 0.5 && chords.filter?.cutoff === 0.8 && file.song.clips.some((c) => c.fadeIn === 4 && c.sweep?.from === 0.3), "The saved song should keep the track's effects and the clip's fade and sweep.");
 check(file.app === "JuraDAW" && file.song?.tracks?.length === 3 && file.song.clips.length === 4 && file.song.bpm === 100, "The saved song isn't a JuraDAW file with 3 tracks and 4 clips at 100 bpm.");
 await call("export_midi", {});
 const mid = readFileSync(join(songs, "CI song.mid"));

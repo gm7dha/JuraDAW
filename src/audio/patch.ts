@@ -67,6 +67,14 @@ export class Patch {
     return filter;
   }
 
+  /** A wave bender: sound in (−1…1) is looked up in `curve` to give the sound out. */
+  shaper(curve: WaveShaperNode["curve"]): WaveShaperNode {
+    const shaper = this.ctx.createWaveShaper();
+    shaper.curve = curve;
+    this.nodes.push(shaper);
+    return shaper;
+  }
+
   /** Left (−1) to right (1). */
   pan(value: number): StereoPannerNode {
     const pan = this.ctx.createStereoPanner();

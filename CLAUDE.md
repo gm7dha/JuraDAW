@@ -49,6 +49,32 @@
   notes that were already past its end, so a clip made shorter stays shorter), the whole song (`setBpm`,
   `setBeatsPerBar`, `setMaster`, `setLoop` with `MIN_LOOP`, `setSongName`). Nothing may start further in, or last
   longer, than `MOST_BEATS` (document.ts).
+- Shaping the sound (v0.3; `src/model/shaping.ts`, pure — the usual values, limits and sums the engine, the panel
+  and Claude's tools share). A `Track`'s own effects, all optional fields **left out when off** (so older songs are
+  untouched, and `effectsOf(track)` fills them in): `drive`, `crush`, `chorus` (called Wobble on screen), `pump`
+  0–1, and `filter` {kind "low" | "high", cutoff 0–1 — `cutoffHz` maps it evenly in pitch from 40 Hz to 18 kHz; a
+  "low" filter at 1 or a "high" one at 0 changes nothing, `filterIsOn` —, resonance 0–1}. A `Clip`'s own shape, also
+  left out when plain: `gain` (0–2; midi clips have it too now, `clipGain`), `fadeIn`/`fadeOut` in beats
+  (`clipFades` keeps them inside the clip; `clipLevelPoints` gives the corners of the loudness between two moments)
+  and `sweep` {from, to} (the track's filter moves between two cutoffs while the clip plays; `sweepAt`).
+  `edits.updateTrack`/`updateClip` take them (`filter` a part at a time; `sweep: null` takes one off; zero deletes the
+  field; the same again returns the same song), `splitClip` keeps the fade in with the first part and the fade out
+  with the second and carries a sweep on across the cut, `parseSong` reads them carefully. In sound, `mixer.ts`: each
+  strip is input → drive (a tanh WaveShaper, `driveCurve`, turned down after by `driveTrim`) → crush (a staircase,
+  `crushCurve`/`crushSteps`) → filter (allpass when off) → wobble (two drifting delays, made the first time it's
+  turned up) → pump → fader; with no curve a WaveShaper passes sound untouched, so a plain track sounds exactly as
+  before. In time with the song — `mixer.scheduleShaping(song, from, to, timeOf, clipBeats)`, called for every
+  stretch by transport.ts and render.ts — the pump's dip on each beat and the filter's place under a sweep;
+  `releaseShaping` when playing stops puts the filters back. `src/audio/clipLevel.ts`: a shaped clip's notes each
+  play through a volume of their own that follows the clip's shape (`shapedInput`), a recording's fades are a second
+  volume after its own (`fadeNode`). Seven more instruments in instruments.ts (felt-piano, choir, sub-bass,
+  growl-bass, supersaw, wobble, sweep — `startVoice`'s optional `seconds` tells the noise sweep how long its note is,
+  so it tops out as the note ends; notes below middle C fall instead); `BASS_INSTRUMENTS` has the two new basses.
+  UI: SidePanel `TrackEffects` and `ClipShape` (sliders through `edits`, so off means gone). Claude's tools:
+  add_track/edit_track take drive, crush, filter, wobble, pump; add_clip/edit_clip take volume, fade_in, fade_out,
+  filter_sweep; describe_song says them. Tests: tests/shaping; devkit-style measuring of every effect through the
+  real mixdown is worth repeating when the mixer changes (drive adds harmonics, pump dips on the beat, a fade
+  swells, a sweep opens the filter, nothing clips).
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -108,8 +134,8 @@
   schedules the next tenth of a second on the sound clock from `schedule.ts`, asking the song afresh each time, so
   edits and tempo changes are heard while it plays and a loop goes round without a gap; stops by itself when the song
   runs out), `schedule.ts` (pure: `notesBetween`, `audioClipsBetween`, `audibleTracks` — mute and solo —,
-  `nextLoopWindow`, `playEndBeat`), `instruments.ts` (`INSTRUMENTS`: piano, electric-piano, organ, strings, pad, bass,
-  synth-bass, lead, pluck, bells — each a recipe that builds one note from oscillators, noise and filters, levels
+  `nextLoopWindow`, `playEndBeat`), `instruments.ts` (`INSTRUMENTS`: piano, felt-piano, electric-piano, organ, strings,
+  pad, choir, bass, synth-bass, sub-bass, growl-bass, lead, supersaw, wobble, pluck, bells, sweep — each a recipe that builds one note from oscillators, noise and filters, levels
   matched by measuring — and drums; `instrumentById` falls back to the piano), `drums.ts` (the kit, every hit made on
   the spot), `patch.ts` + `voice.ts` (building one note, and letting go of it without a click), `pluck.ts` (pure
   Karplus–Strong), `metronome.ts` (the click, also the count-in), `record.ts` (the microphone with the browser's
@@ -233,7 +259,7 @@
   and 1024 px — at 1280 also with the "Notes on" button showing.
 - Tests (`tests/*.test.ts`, Vitest, pure code only — each file stands alone): time, edits, document (also keep and
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
-  mixer sums), audioWav (WAV and the plucked string), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
+  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, their curves and files), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
   prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
   files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the

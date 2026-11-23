@@ -1,13 +1,16 @@
 /**
  * The side panel, as JuraCUT's: the settings of what's selected. A clip's
- * settings when clips are selected (name, start, length, gain; Repeat, Split,
- * Delete), then the selected track's (name, colour, instrument, volume, left
- * or right, reverb, echo); with nothing selected, the song's own settings and
- * a tip.
+ * settings when clips are selected (name, start, length, its own volume,
+ * fades and filter sweep; Repeat, Split, Delete), then the selected track's
+ * (name, colour, volume, left or right, reverb, echo, its own effects —
+ * drive, crush, filter, wobble, pump — and the instrument); with nothing
+ * selected, the song's own settings and a tip.
  */
 import { useEffect, useMemo, useState } from "react";
 
 import { INSTRUMENTS, instrumentById } from "../audio/instruments";
+import * as edits from "../model/edits";
+import { clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText } from "../model/shaping";
 import { useStore } from "../model/store";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type Song, type Track } from "../model/types";
 import { hear, playheadBeat } from "./engineApp";
@@ -119,19 +122,7 @@ function ClipSettings({ song, clips }: { song: Song; clips: Clip[] }) {
           <p className="panel-hint">
             Bar {barBeat(one.start, bpb).text}, {lengthWords(clipBeats(one, song.bpm), bpb)} long{one.kind === "midi" ? ` · ${one.notes.length} ${one.notes.length === 1 ? "note" : "notes"}` : " · a recording (it plays at its own speed whatever the tempo)"}.
           </p>
-          {one.kind === "audio" && (
-            <SliderRow
-              label="Clip volume"
-              words={percent(one.gain)}
-              value={one.gain}
-              min={0}
-              max={2}
-              step={0.01}
-              usual={1}
-              title="How loud this clip is: 100% is as recorded (double-click to go back to it)"
-              make={(sg, v) => ({ ...sg, clips: sg.clips.map((c) => (c.id === one.id && c.kind === "audio" ? { ...c, gain: v } : c)) })}
-            />
-          )}
+          <ClipShape song={song} clip={one} />
           {one.kind === "midi" && (
             <button type="button" className="text-button wide-button" onClick={() => s().editClip(one.id)} title="Open this clip's notes in the editor along the bottom (or double-click the clip)">
               <Icons.Editor size={18} /> Edit notes
@@ -172,6 +163,114 @@ function ClipSettings({ song, clips }: { song: Song; clips: Clip[] }) {
   );
 }
 
+/** A clip's own loudness — its volume, a swell in, a dying away — and its filter sweep. */
+function ClipShape({ song, clip }: { song: Song; clip: Clip }) {
+  const length = clipBeats(clip, song.bpm);
+  const fades = clipFades(clip, length);
+  const beatsWords = (beats: number) => (beats > 0 ? lengthWords(beats, song.beatsPerBar) : "none");
+  const sweep = clip.sweep;
+  const track = song.tracks.find((t) => t.id === clip.trackId);
+  const rest = track ? effectsOf(track).filter.cutoff : 1;
+  const place = (v: number) => hzText(cutoffHz(v));
+  return (
+    <>
+      <SliderRow
+        label="Clip volume"
+        words={percent(clipGain(clip))}
+        value={clipGain(clip)}
+        min={0}
+        max={2}
+        step={0.01}
+        usual={1}
+        title={`How loud this clip is: 100% is as ${clip.kind === "audio" ? "recorded" : "played"} (double-click to go back to it)`}
+        make={(sg, v) => edits.updateClip(sg, clip.id, { gain: v })}
+      />
+      <SliderRow
+        label="Fade in"
+        words={beatsWords(fades.fadeIn)}
+        value={fades.fadeIn}
+        min={0}
+        max={length}
+        step={0.25}
+        usual={0}
+        title="Swell in from silence over this long at the clip's start, rather than switching on (double-click for none)"
+        make={(sg, v) => edits.updateClip(sg, clip.id, { fadeIn: v, fadeOut: Math.min(fades.fadeOut, length - v) })}
+      />
+      <SliderRow
+        label="Fade out"
+        words={beatsWords(fades.fadeOut)}
+        value={fades.fadeOut}
+        min={0}
+        max={length}
+        step={0.25}
+        usual={0}
+        title="Die away to silence over this long at the clip's end (double-click for none)"
+        make={(sg, v) => edits.updateClip(sg, clip.id, { fadeOut: v, fadeIn: Math.min(fades.fadeIn, length - v) })}
+      />
+      <label className="check-row" title="Move the track's filter from one place to another while this clip plays: opening up for a build, or closing down">
+        <input
+          type="checkbox"
+          checked={!!sweep}
+          onChange={(e) => {
+            useStore.getState().updateClip(clip.id, { sweep: e.target.checked ? { from: 0.3, to: Math.max(rest, 0.9) } : null });
+            // Let go of the focus, so Space plays rather than unticking the box.
+            e.currentTarget.blur();
+          }}
+        />
+        Sweep the filter over this clip
+      </label>
+      {sweep && (
+        <>
+          <SliderRow label="From" words={place(sweep.from)} value={sweep.from} title="Where the filter is when the clip starts (low = muffled, high = open)" make={(sg, v) => edits.updateClip(sg, clip.id, { sweep: { from: v, to: sweep.to } })} />
+          <SliderRow label="To" words={place(sweep.to)} value={sweep.to} title="Where the filter has got to when the clip ends" make={(sg, v) => edits.updateClip(sg, clip.id, { sweep: { from: sweep.from, to: v } })} />
+        </>
+      )}
+    </>
+  );
+}
+
+/** The track's own effects, in the order the sound goes through them. */
+function TrackEffects({ track }: { track: Track }) {
+  const e = effectsOf(track);
+  const off = e.filter.kind === "low" ? 1 : 0;
+  const amount = (v: number) => (v > 0 ? percent(v) : "off");
+  return (
+    <>
+      <div className="field-label">
+        Effects <span className="muted">— this track's own</span>
+      </div>
+      <SliderRow label="Drive" words={amount(e.drive)} value={e.drive} usual={0} title="Warmth, then grit, then fuzz (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { drive: v })} />
+      <SliderRow label="Crush" words={amount(e.crush)} value={e.crush} usual={0} title="The rough, lo-fi sound of an old sampler or games console (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { crush: v })} />
+      <div className="segmented two filter-kind" role="radiogroup" aria-label="What the filter takes away">
+        {(["low", "high"] as const).map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            role="radio"
+            aria-checked={e.filter.kind === kind}
+            className={e.filter.kind === kind ? "selected" : ""}
+            title={kind === "low" ? "The filter takes away the top of the sound: muffled, underwater (a low-pass filter)" : "The filter takes away the bottom of the sound: thin, like a small radio (a high-pass filter)"}
+            onClick={() => useStore.getState().updateTrack(track.id, { filter: { kind, cutoff: kind === "low" ? 1 : 0 } })}
+          >
+            {kind === "low" ? "Cut the top" : "Cut the bottom"}
+          </button>
+        ))}
+      </div>
+      <SliderRow
+        label="Filter"
+        words={filterIsOn(e.filter) ? `cuts ${e.filter.kind === "low" ? "above" : "below"} ${hzText(cutoffHz(e.filter.cutoff))}` : "off"}
+        value={e.filter.cutoff}
+        usual={off}
+        title={`Where the filter cuts: slide ${e.filter.kind === "low" ? "down" : "up"} to take more away (double-click for off)`}
+        make={(sg, v) => edits.updateTrack(sg, track.id, { filter: { cutoff: v } })}
+      />
+      <SliderRow label="Filter ring" words={amount(e.filter.resonance)} value={e.filter.resonance} usual={0} title="A ringing edge where the filter cuts (resonance): a little adds bite, a lot whistles" make={(sg, v) => edits.updateTrack(sg, track.id, { filter: { resonance: v } })} />
+      <SliderRow label="Wobble" words={amount(e.chorus)} value={e.chorus} usual={0} title="A slow drift in pitch that widens and thickens the sound, like a worn tape (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { chorus: v })} />
+      <SliderRow label="Pump" words={amount(e.pump)} value={e.pump} usual={0} title="Dips the volume on every beat and lets it swell back, as dance music does (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { pump: v })} />
+    </>
+  );
+}
+
 function TrackSettings({ song, track }: { song: Song; track: Track }) {
   const s = useStore.getState;
   const index = song.tracks.findIndex((t) => t.id === track.id);
@@ -205,6 +304,7 @@ function TrackSettings({ song, track }: { song: Song; track: Track }) {
       <SliderRow label="Left or right" words={panWords(track.pan)} value={track.pan} min={-1} max={1} step={0.02} usual={0} title="Where the track sits between the left and right speakers (double-click for the middle)" make={(sg, v) => withTrack(sg, track.id, { pan: Math.abs(v) < 0.04 ? 0 : v })} />
       <SliderRow label="Reverb" words={percent(track.reverb)} value={track.reverb} usual={0} title="The sound of a room round this track" make={(sg, v) => withTrack(sg, track.id, { reverb: v })} />
       <SliderRow label="Echo" words={percent(track.echo)} value={track.echo} usual={0} title="Repeats that fade away" make={(sg, v) => withTrack(sg, track.id, { echo: v })} />
+      <TrackEffects track={track} />
 
       {track.kind === "instrument" ? (
         <>

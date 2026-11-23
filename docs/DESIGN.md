@@ -81,5 +81,8 @@ files when you Save.
   install, light/dark.
 - **v0.2** — JuraDAW for Claude: an extension for the Claude desktop app that writes songs with the app's own code,
   and Live with Claude (Claude works on the song open in the tab), both as JuraCAD's.
-- **Later** — recent songs, volume changes over time, more effects (EQ, compressor), tempo changes, time-stretching
+- **v0.3** — shaping the sound: each track's own effects (drive, crush, a filter with resonance, wobble, pump), a
+  clip's own volume, fades and filter sweep, and seven more instruments (soft piano, choir, sub and gritty basses,
+  big saw, wobbly synth, noise sweep).
+- **Later** — recent songs, volume changes drawn over time, more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

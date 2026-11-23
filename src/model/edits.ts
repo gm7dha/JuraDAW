@@ -8,10 +8,11 @@
  * Functions that make something new return it beside the song
  * (`{ song, id }` or `{ song, ids }`), or null when there was nothing to do.
  */
-import { MIN_SECONDS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
+import { MIN_SECONDS, MOST_BEATS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
+import { cleanFilter, cleanSweep, filterIsOn } from "./shaping";
 import { EPS, beatsToSeconds, clipEnd, r6, secondsToBeats } from "./time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "./types";
-import type { AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Track } from "./types";
+import type { AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -139,7 +140,7 @@ export function duplicateTrack(song: Song, id: string): { song: Song; id: string
   return { song: { ...song, tracks, clips: [...song.clips, ...clips] }, id: copy.id };
 }
 
-export type TrackPatch = Partial<Omit<Track, "id" | "kind">>;
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter">> & { filter?: Partial<TrackFilter> };
 
 /**
  * A track's settings changed, each kept inside its limits (blank names and unusable values are ignored; audio
@@ -158,12 +159,25 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
   if (typeof patch.solo === "boolean") next.solo = patch.solo;
   if (finite(patch.reverb)) next.reverb = clamp(patch.reverb, 0, 1);
   if (finite(patch.echo)) next.echo = clamp(patch.echo, 0, 1);
+  // The track's own effects: an effect turned right down is left out of the track altogether.
+  for (const key of ["drive", "crush", "chorus", "pump"] as const) {
+    const amount = patch[key];
+    if (!finite(amount)) continue;
+    if (clamp(amount, 0, 1) > 0) next[key] = clamp(amount, 0, 1);
+    else delete next[key];
+  }
+  if (patch.filter) {
+    const filter = cleanFilter({ ...track.filter, ...patch.filter });
+    const was = track.filter;
+    if (!filterIsOn(filter) && filter.resonance === 0 && filter.kind === "low") delete next.filter;
+    else if (!(was && was.kind === filter.kind && was.cutoff === filter.cutoff && was.resonance === filter.resonance)) next.filter = filter;
+  }
   if (track.kind === "instrument" && typeof patch.instrument === "string" && patch.instrument && patch.instrument !== track.instrument) {
     next.instrument = patch.instrument;
     const others = song.tracks.filter((t) => t.id !== id);
     if (patch.name === undefined && hasInstrumentName(track)) next.name = freeTrackName("instrument", next.instrument, others);
   }
-  const keys = Object.keys(next) as (keyof Track)[];
+  const keys = Object.keys({ ...track, ...next }) as (keyof Track)[];
   if (keys.every((k) => next[k] === track[k])) return song;
   return { ...song, tracks: song.tracks.map((t) => (t === track ? next : t)) };
 }
@@ -264,7 +278,7 @@ export function addClips(song: Song, clips: readonly Clip[], sounds: readonly Au
 }
 
 /** Everything about a clip that may be changed (which fields apply depends on the clip's sort). */
-export type ClipPatch = Partial<{ trackId: string; name: string; start: number; length: number; notes: Note[]; offset: number; duration: number; gain: number }>;
+export type ClipPatch = Partial<{ trackId: string; name: string; start: number; length: number; notes: Note[]; offset: number; duration: number; gain: number; fadeIn: number; fadeOut: number; sweep: Sweep | null }>;
 
 /**
  * A clip changed, kept sensible: it starts at or after the beginning, moves only to a track of its own sort, a clip of
@@ -280,10 +294,27 @@ export function updateClip(song: Song, id: string, patch: ClipPatch): Song {
     const track = findTrack(song, patch.trackId);
     if (track && clipFitsTrack(clip, track)) base.trackId = track.id;
   }
+  // Fades and the filter sweep: left out of the clip altogether when there are none.
+  for (const key of ["fadeIn", "fadeOut"] as const) {
+    const beats = patch[key];
+    if (!finite(beats)) continue;
+    if (beats >= MIN_LENGTH) base[key] = Math.min(MOST_BEATS, r6(beats));
+    else delete base[key];
+  }
+  if (patch.sweep === null) delete base.sweep;
+  else if (patch.sweep !== undefined) {
+    const sweep = cleanSweep(patch.sweep);
+    if (sweep && !(base.sweep && base.sweep.from === sweep.from && base.sweep.to === sweep.to)) base.sweep = sweep;
+  }
   let next: Clip;
   if (base.kind === "midi") {
     if (finite(patch.length)) base.length = Math.max(MIN_LENGTH, patch.length);
     if (Array.isArray(patch.notes)) base.notes = patch.notes;
+    if (finite(patch.gain)) {
+      const gain = clamp(patch.gain, 0, 2);
+      if (gain === 1) delete base.gain;
+      else base.gain = gain;
+    }
     next = base;
   } else {
     const seconds = song.audio.find((a) => a.id === base.audioId)?.seconds ?? base.offset + base.duration;
@@ -295,7 +326,7 @@ export function updateClip(song: Song, id: string, patch: ClipPatch): Song {
   }
   const a = clip as unknown as Record<string, unknown>;
   const b = next as unknown as Record<string, unknown>;
-  if (Object.keys(b).every((k) => a[k] === b[k])) return song;
+  if (Object.keys({ ...a, ...b }).every((k) => a[k] === b[k])) return song;
   return { ...song, clips: song.clips.map((c) => (c === clip ? next : c)) };
 }
 
@@ -432,6 +463,15 @@ export function splitClip(song: Song, id: string, at: number): { song: Song; id:
     if (seconds < MIN_SECONDS || clip.duration - seconds < MIN_SECONDS) return null;
     left = { ...clip, duration: seconds };
     right = { ...clip, id: newId("c"), start: r6(at), offset: clip.offset + seconds, duration: clip.duration - seconds };
+  }
+  // The swell-in stays with the first part and the dying-away with the second; a filter sweep carries on across the cut.
+  delete left.fadeOut;
+  delete right.fadeIn;
+  if (clip.sweep) {
+    const whole = end - clip.start;
+    const middle = r6(clip.sweep.from + (clip.sweep.to - clip.sweep.from) * (cut / whole));
+    left.sweep = { from: clip.sweep.from, to: middle };
+    right.sweep = { from: middle, to: clip.sweep.to };
   }
   const clips = song.clips.flatMap((c) => (c === clip ? [left, right] : [c]));
   return { song: { ...song, clips }, id: right.id };
