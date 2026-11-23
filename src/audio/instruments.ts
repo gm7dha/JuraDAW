@@ -7,7 +7,7 @@
  * back the way to let it go. The LEVEL numbers were set by measuring, so the
  * instruments are about as loud as each other at the same velocity.
  */
-import { playDrum } from "./drums";
+import { playDrum, playKitDrum } from "./drums";
 import { ICONS } from "./instrumentIcons";
 import { Patch } from "./patch";
 import { pluckBuffer } from "./pluck";
@@ -513,6 +513,36 @@ const noiseSweep: Recipe = (p, pitch, velocity, seconds) => {
   return p.parts(level, rising ? 0.03 : 0.15);
 };
 
+/** The 808 bass: a long, deep sine that slides down onto its note and growls when pushed — the bass of trap. */
+const bass808: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const t = p.start;
+  const body = p.osc("sine", f);
+  body.frequency.setValueAtTime(f * 1.5, t);
+  body.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+  const upper = p.osc("triangle", f * 2);
+  upper.frequency.setValueAtTime(f * 3, t);
+  upper.frequency.exponentialRampToValueAtTime(f * 2, t + 0.05);
+  const mix = p.gain(1);
+  body.connect(mix);
+  upper.connect(p.gain(0.16)).connect(mix);
+  // Pushed into a soft wall: the higher the velocity, the more it growls.
+  const push = p.gain(1 + 2 * velocityBrightness(velocity));
+  const grit = p.shaper(SOFT_WALL);
+  const amp = p.envelope(1, 0.003, 0.7, 0.6);
+  amp.gain.setTargetAtTime(0, t + 0.6, 1.4);
+  const level = p.gain(LEVEL["bass-808"] * velocityGain(velocity));
+  mix.connect(push).connect(grit).connect(p.filter("lowpass", Math.min(f * 8 + 200, 2500), 0.6)).connect(amp).connect(level);
+  return p.parts(level, 0.06);
+};
+
+/** A soft wall: sound pushed into it is rounded off rather than cut. */
+const SOFT_WALL = (() => {
+  const curve = new Float32Array(1025);
+  for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(1.6 * ((2 * i) / (curve.length - 1) - 1));
+  return curve;
+})();
+
 /**
  * How loud each recipe is made, set by measuring (devkit/audio-check.mjs
  * prints the figures) so the instruments match at velocity 100.
@@ -535,6 +565,7 @@ const LEVEL = {
   supersaw: 0.31,
   wobble: 0.35,
   sweep: 1,
+  "bass-808": 0.5,
 };
 
 // ── the list ──
@@ -566,6 +597,7 @@ export const INSTRUMENTS: Instrument[] = [
   keyed("synth-bass", "Synth bass", "Bass", synthBass),
   keyed("sub-bass", "Sub bass", "Bass", subBass),
   keyed("growl-bass", "Gritty bass", "Bass", growlBass),
+  keyed("bass-808", "808 bass", "Bass", bass808),
   keyed("lead", "Synth lead", "Synths", lead),
   keyed("supersaw", "Big saw", "Synths", supersaw),
   keyed("wobble", "Wobbly synth", "Synths", wobble),
@@ -579,6 +611,22 @@ export const INSTRUMENTS: Instrument[] = [
     icon: ICONS.drums,
     kind: "drums",
     startVoice: playDrum,
+  },
+  {
+    id: "drums-808",
+    name: "808 kit",
+    group: "Drums",
+    icon: ICONS["drums-808"],
+    kind: "drums",
+    startVoice: (ctx, destination, pitch, velocity, when) => playKitDrum("drums-808", ctx, destination, pitch, velocity, when),
+  },
+  {
+    id: "drums-electro",
+    name: "Electronic kit",
+    group: "Drums",
+    icon: ICONS["drums-electro"],
+    kind: "drums",
+    startVoice: (ctx, destination, pitch, velocity, when) => playKitDrum("drums-electro", ctx, destination, pitch, velocity, when),
   },
 ];
 

@@ -9,10 +9,10 @@
  * (`{ song, id }` or `{ song, ids }`), or null when there was nothing to do.
  */
 import { MIN_SECONDS, MOST_BEATS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
-import { cleanFilter, cleanSweep, filterIsOn } from "./shaping";
+import { DEFAULT_ARP, cleanArp, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { EPS, beatsToSeconds, clipEnd, r6, secondsToBeats } from "./time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "./types";
-import type { AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
+import type { Arp, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -140,7 +140,7 @@ export function duplicateTrack(song: Song, id: string): { song: Song; id: string
   return { song: { ...song, tracks, clips: [...song.clips, ...clips] }, id: copy.id };
 }
 
-export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter">> & { filter?: Partial<TrackFilter> };
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null };
 
 /**
  * A track's settings changed, each kept inside its limits (blank names and unusable values are ignored; audio
@@ -160,11 +160,24 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
   if (finite(patch.reverb)) next.reverb = clamp(patch.reverb, 0, 1);
   if (finite(patch.echo)) next.echo = clamp(patch.echo, 0, 1);
   // The track's own effects: an effect turned right down is left out of the track altogether.
-  for (const key of ["drive", "crush", "chorus", "pump"] as const) {
+  for (const key of ["drive", "crush", "chorus", "pump", "chop"] as const) {
     const amount = patch[key];
     if (!finite(amount)) continue;
     if (clamp(amount, 0, 1) > 0) next[key] = clamp(amount, 0, 1);
     else delete next[key];
+  }
+  for (const key of ["lows", "highs"] as const) {
+    const amount = patch[key];
+    if (!finite(amount)) continue;
+    if (tone(amount) !== 0) next[key] = tone(amount);
+    else delete next[key];
+  }
+  // The arpeggiator: settings in part (the rest kept), or null to switch it off.
+  if (patch.arp === null) delete next.arp;
+  else if (patch.arp && track.kind === "instrument") {
+    const arp = cleanArp({ ...DEFAULT_ARP, ...track.arp, ...patch.arp });
+    const was = track.arp;
+    if (arp && !(was && was.style === arp.style && was.rate === arp.rate && was.octaves === arp.octaves)) next.arp = arp;
   }
   if (patch.filter) {
     const filter = cleanFilter({ ...track.filter, ...patch.filter });
@@ -278,7 +291,7 @@ export function addClips(song: Song, clips: readonly Clip[], sounds: readonly Au
 }
 
 /** Everything about a clip that may be changed (which fields apply depends on the clip's sort). */
-export type ClipPatch = Partial<{ trackId: string; name: string; start: number; length: number; notes: Note[]; offset: number; duration: number; gain: number; fadeIn: number; fadeOut: number; sweep: Sweep | null }>;
+export type ClipPatch = Partial<{ trackId: string; name: string; start: number; length: number; notes: Note[]; offset: number; duration: number; gain: number; fadeIn: number; fadeOut: number; sweep: Sweep | null; reverse: boolean }>;
 
 /**
  * A clip changed, kept sensible: it starts at or after the beginning, moves only to a track of its own sort, a clip of
@@ -322,6 +335,8 @@ export function updateClip(song: Song, id: string, patch: ClipPatch): Song {
     const most = Math.max(MIN_SECONDS, seconds - base.offset);
     base.duration = clamp(finite(patch.duration) ? patch.duration : base.duration, MIN_SECONDS, most);
     if (finite(patch.gain)) base.gain = clamp(patch.gain, 0, 2);
+    if (patch.reverse === true) base.reverse = true;
+    else if (patch.reverse === false) delete base.reverse;
     next = base;
   }
   const a = clip as unknown as Record<string, unknown>;

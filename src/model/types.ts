@@ -37,6 +37,23 @@ export interface Track {
   chorus?: number;
   /** Pump: dips the volume on every beat and lets it swell back, as dance music does. 0–1. */
   pump?: number;
+  /** Tone: more (up to 1) or less (down to −1) of the low end and of the top end. */
+  lows?: number;
+  highs?: number;
+  /** Chop: cuts the sound into sixteenth notes, a little (0) to hard stutters (1). */
+  chop?: number;
+  /** Arpeggiator: chords held on this track are played one note at a time, in a pattern (instrument tracks). */
+  arp?: Arp;
+}
+
+/** How an arpeggiator plays a held chord. */
+export interface Arp {
+  /** "up", "down", "updown" (up then back down), or "random". */
+  style: "up" | "down" | "updown" | "random";
+  /** Beats a step: 1 (beats), 0.5 (eighth notes), 0.25 (sixteenths), 1/3 (triplets). */
+  rate: number;
+  /** How many octaves it climbs through: 1–3. */
+  octaves: number;
 }
 
 export interface TrackFilter {
@@ -100,6 +117,8 @@ export interface AudioClip extends ClipBase {
   duration: number;
   /** 0–2, 1 = as recorded. */
   gain: number;
+  /** Played backwards (left out = forwards). */
+  reverse?: true;
 }
 
 export type Clip = MidiClip | AudioClip;

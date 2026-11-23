@@ -7,7 +7,7 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.3 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> **Status: v0.4 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
 > export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today

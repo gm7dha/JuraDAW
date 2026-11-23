@@ -55,6 +55,13 @@ function line(spec: Line): LibraryPattern {
 
 export const BASS_PATTERNS: LibraryPattern[] = [
   line({
+    id: "bass-808",
+    name: "808 bass",
+    description: "The long, booming bass of trap: the chord's root held under the beat, struck again just before beat 3, and an octave jump to finish. Goes with the Trap beat.",
+    instrument: "bass-808",
+    bar: ({ root, up }) => [note(root, 0, 2.5, 110), note(root, 2.75, 0.75, 96), note(up(7), 3.5, 0.5, 100)],
+  }),
+  line({
     id: "bass-roots",
     name: "Root notes",
     description: "The simplest bass line there is: the name-note of each chord, held or played on every beat.",

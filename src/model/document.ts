@@ -4,7 +4,7 @@
  * file — the song plus its sounds as base64 WAV. Pure: works in Node and in
  * the browser.
  */
-import { cleanFilter, cleanSweep, filterIsOn } from "./shaping";
+import { cleanArp, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, TRACK_COLOURS } from "./types";
 import type { AudioClip, AudioInfo, Clip, Loop, MidiClip, Note, Song, Track, TrackKind } from "./types";
 
@@ -77,7 +77,18 @@ const INSTRUMENT_LABELS: Record<string, string> = {
   bells: "Bells",
   sweep: "Noise sweep",
   drums: "Drums",
+  "drums-808": "808 kit",
+  "drums-electro": "Electronic kit",
+  "bass-808": "808 bass",
 };
+
+/** The instruments that are drum kits (each key a different drum, as DRUM_PITCHES in time.ts). */
+export const DRUM_KITS: readonly string[] = ["drums", "drums-808", "drums-electro"];
+
+/** Is this instrument one of the drum kits? */
+export function isDrumKit(instrument: string | null | undefined): boolean {
+  return !!instrument && DRUM_KITS.includes(instrument);
+}
 
 /** A friendly name for an instrument id ("electric-piano" → "Electric piano"); unknown ids are tidied up the same way. */
 export function instrumentLabel(instrument: string): string {
@@ -172,9 +183,17 @@ function parseTrack(v: unknown, taken: Set<string>, before: readonly Track[]): T
 }
 
 /** A track's own effects from a file: only the ones that are switched on are kept. */
-function parseEffects(v: Record<string, unknown>): Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump"> {
-  const out: Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump"> = {};
-  for (const key of ["drive", "crush", "chorus", "pump"] as const) {
+function parseEffects(v: Record<string, unknown>): Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp"> {
+  const out: Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp"> = {};
+  for (const key of ["lows", "highs"] as const) {
+    const amount = tone(v[key]);
+    if (amount !== 0) out[key] = amount;
+  }
+  if (v.kind === "instrument") {
+    const arp = cleanArp(v.arp);
+    if (arp) out.arp = arp;
+  }
+  for (const key of ["drive", "crush", "chorus", "pump", "chop"] as const) {
     const amount = within(v[key], 0, 1, 0);
     if (amount > 0) out[key] = amount;
   }
@@ -263,6 +282,7 @@ function parseClip(v: unknown, taken: Set<string>, tracks: ReadonlyMap<string, T
       duration,
       gain: within(v.gain, 0, 2, 1),
       ...parseShape(v),
+      ...(v.reverse === true ? { reverse: true as const } : {}),
     };
     return clip;
   }

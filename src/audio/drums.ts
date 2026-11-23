@@ -3,6 +3,11 @@
  * waves that drop in pitch for the kick and toms, noise for the snare, clap
  * and shaker, and a cluster of clashing square waves for the metal of the
  * cymbals and cowbell (the way classic drum machines did it).
+ *
+ * There are three kits on the same keys: the ordinary kit, an 808 kit (the
+ * long, booming kick, snappy snare and ticking hats of trap and hip-hop) and
+ * an electronic kit (the punchy kick and crisp hats of house and techno).
+ * A drum a kit doesn't have of its own is played by the ordinary kit.
  */
 import { Patch } from "./patch";
 import { velocityBrightness, velocityGain } from "./shared";
@@ -212,7 +217,182 @@ const LEVEL = {
   ride: 0.8,
   cowbell: 0.93,
   shaker: 0.3,
+  kick808: 1.15,
+  snare808: 0.62,
+  clap808: 1.75,
+  tom808: 0.95,
+  hat808: 1.9,
+  openHat808: 1.6,
+  kickElectro: 1.25,
+  snareElectro: 0.55,
+  hatElectro: 0.25,
+  openHatElectro: 0.25,
+  rideElectro: 0.6,
 };
+
+// ── the 808 kit ──
+
+/** The 808's kick: a sine that drops a long way and booms on for most of a second, with a touch of grit. */
+const kick808: DrumRecipe = (p, velocity) => {
+  const t = p.start;
+  const body = p.osc("sine", 44);
+  body.frequency.setValueAtTime(150, t);
+  body.frequency.exponentialRampToValueAtTime(44, t + 0.07);
+  const amp = p.envelope(1, 0.002, 0, 0.45);
+  const grit = p.shaper(GRIT);
+  body.connect(amp).connect(grit);
+  // The click at the front, so it cuts through on small speakers.
+  const click = p.osc("triangle", 880);
+  click.frequency.setValueAtTime(1800, t);
+  click.frequency.exponentialRampToValueAtTime(300, t + 0.015);
+  const clickLevel = p.envelope(0.3 * velocityBrightness(velocity), 0.0005, 0, 0.006);
+  click.connect(clickLevel);
+  // An octave above, fading sooner: the note small speakers can play.
+  const upper = p.osc("triangle", 88);
+  upper.frequency.setValueAtTime(300, t);
+  upper.frequency.exponentialRampToValueAtTime(88, t + 0.06);
+  const upperLevel = p.envelope(0.22, 0.002, 0, 0.12);
+  upper.connect(upperLevel);
+  const out = p.gain(LEVEL.kick808 * velocityGain(velocity));
+  grit.connect(out);
+  clickLevel.connect(out);
+  upperLevel.connect(out);
+  return hit(p, out, 3.5);
+};
+
+/** The 808's snare: two tuned tones and a short, bright snap of noise. */
+const snare808: DrumRecipe = (p, velocity) => {
+  const tones = p.envelope(0.7, 0.001, 0, 0.06);
+  p.osc("sine", 238).connect(tones);
+  p.osc("sine", 476).connect(p.gain(0.55)).connect(tones);
+  const snap = p.envelope(0.8 + 0.3 * velocityBrightness(velocity), 0.001, 0, 0.11);
+  p.noise().connect(p.filter("highpass", 2200, 0.7)).connect(snap);
+  const out = p.gain(LEVEL.snare808 * velocityGain(velocity));
+  tones.connect(out);
+  snap.connect(out);
+  return hit(p, out, 0.9);
+};
+
+/** The 808's clap: four quick bursts and a long, reverberant tail. */
+const clap808: DrumRecipe = (p, velocity) => {
+  const t = p.start;
+  const amp = p.gain(0);
+  for (let i = 0; i < 4; i++) {
+    const at = t + i * 0.009;
+    amp.gain.setValueAtTime(1, at);
+    amp.gain.exponentialRampToValueAtTime(0.1, at + 0.0085);
+  }
+  amp.gain.setValueAtTime(0.8, t + 0.036);
+  amp.gain.setTargetAtTime(0, t + 0.036, 0.11);
+  const out = p.gain(LEVEL.clap808 * velocityGain(velocity));
+  p.noise().connect(p.filter("bandpass", 1000, 1.3)).connect(p.filter("highpass", 650, 0.5)).connect(amp).connect(out);
+  return hit(p, out, 0.9);
+};
+
+/** The 808's hi-hat: the clashing squares, very bright and very short. */
+function hat808(p: Patch, velocity: number, decay: number, level: number): VoiceParts {
+  const tone = p.filter("bandpass", 10000, 0.8);
+  metal(p).connect(p.gain(1.4)).connect(tone);
+  const amp = p.envelope(1, 0.0008, 0, decay);
+  const out = p.gain(level * velocityGain(velocity));
+  tone.connect(p.filter("highpass", 7000, 0.7)).connect(amp).connect(out);
+  return hit(p, out, Math.max(0.15, decay * 7));
+}
+
+/** The 808's tom: a slow, singing sine glide (the "pew" of old drum machines). */
+const tom808 = (note: number): DrumRecipe => (p, velocity) => {
+  const t = p.start;
+  const body = p.osc("sine", note);
+  body.frequency.setValueAtTime(note * 1.35, t);
+  body.frequency.exponentialRampToValueAtTime(note, t + 0.25);
+  const amp = p.envelope(1, 0.002, 0, 0.22);
+  const out = p.gain(LEVEL.tom808 * velocityGain(velocity));
+  body.connect(amp).connect(out);
+  const knock = p.osc("triangle", note * 2);
+  knock.connect(p.envelope(0.2, 0.002, 0, 0.05)).connect(out);
+  return hit(p, out, 1.8);
+};
+
+/** The 808's rim shot: a short, wooden knock. */
+const rim808: DrumRecipe = (p, velocity) => {
+  const amp = p.envelope(1, 0.0005, 0, 0.01);
+  p.osc("triangle", 1700).connect(amp);
+  p.osc("triangle", 460).connect(p.gain(0.6)).connect(amp);
+  const out = p.gain(LEVEL.rim * velocityGain(velocity));
+  amp.connect(p.filter("highpass", 300, 0.6)).connect(out);
+  return hit(p, out, 0.12);
+};
+
+// ── the electronic kit ──
+
+/** A punchy club kick: a fast, short drop with a hard click. */
+const kickElectro: DrumRecipe = (p, velocity) => {
+  const t = p.start;
+  const body = p.osc("sine", 52);
+  body.frequency.setValueAtTime(230, t);
+  body.frequency.exponentialRampToValueAtTime(52, t + 0.045);
+  const amp = p.envelope(1, 0.001, 0, 0.16);
+  body.connect(amp);
+  const click = p.noise();
+  click.stop(t + 0.05);
+  const clickLevel = p.envelope(0.45 * velocityBrightness(velocity), 0.0005, 0, 0.004);
+  click.connect(p.filter("bandpass", 3500, 0.8)).connect(clickLevel);
+  const knock = p.osc("triangle", 104);
+  knock.frequency.setValueAtTime(400, t);
+  knock.frequency.exponentialRampToValueAtTime(104, t + 0.04);
+  const knockLevel = p.envelope(0.3, 0.001, 0, 0.06);
+  knock.connect(knockLevel);
+  const out = p.gain(LEVEL.kickElectro * velocityGain(velocity));
+  amp.connect(out);
+  clickLevel.connect(out);
+  knockLevel.connect(out);
+  return hit(p, out, 1.3);
+};
+
+/** A crisp, noisy club snare. */
+const snareElectro: DrumRecipe = (p, velocity) => {
+  const t = p.start;
+  const head = p.osc("triangle", 200);
+  head.frequency.setValueAtTime(320, t);
+  head.frequency.exponentialRampToValueAtTime(200, t + 0.03);
+  const headLevel = p.envelope(0.55, 0.001, 0, 0.045);
+  head.connect(headLevel);
+  const noise = p.envelope(0.9 + 0.2 * velocityBrightness(velocity), 0.001, 0, 0.13);
+  p.noise().connect(p.filter("bandpass", 4500, 0.5)).connect(noise);
+  const out = p.gain(LEVEL.snareElectro * velocityGain(velocity));
+  headLevel.connect(out);
+  noise.connect(out);
+  return hit(p, out, 1);
+};
+
+/** Club hi-hats: mostly noise, sizzling and bright. */
+function hatElectro(p: Patch, velocity: number, decay: number, level: number): VoiceParts {
+  const tone = p.filter("highpass", 7500, 0.8);
+  p.noise().connect(tone);
+  metal(p).connect(p.gain(0.4)).connect(tone);
+  const amp = p.envelope(1, 0.0006, 0, decay);
+  const out = p.gain(level * velocityGain(velocity));
+  tone.connect(p.filter("peaking", 11000, 1)).connect(amp).connect(out);
+  return hit(p, out, Math.max(0.15, decay * 7));
+}
+
+/** A club ride: a long, washy sizzle. */
+const rideElectro: DrumRecipe = (p, velocity) => {
+  const amp = p.envelope(1, 0.001, 0.3, 0.05);
+  amp.gain.setTargetAtTime(0, p.start + 0.1, 0.35);
+  p.noise().connect(p.filter("bandpass", 9000, 1.4)).connect(amp);
+  metal(p).connect(p.gain(0.6)).connect(p.filter("highpass", 5000, 0.7)).connect(amp);
+  const out = p.gain(LEVEL.rideElectro * velocityGain(velocity));
+  amp.connect(out);
+  return hit(p, out, 2.5);
+};
+
+/** The grit of the 808 kick: a soft bend, so it growls a little when played hard. */
+const GRIT = (() => {
+  const curve = new Float32Array(1025);
+  for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(1.8 * ((2 * i) / (curve.length - 1) - 1)) / Math.tanh(1.8);
+  return curve;
+})();
 
 const RECIPES: Record<number, DrumRecipe> = {
   36: kick,
@@ -230,6 +410,33 @@ const RECIPES: Record<number, DrumRecipe> = {
   70: shaker,
 };
 
+/** The 808 kit: its own drums, the ordinary kit's for the rest. */
+const RECIPES_808: Record<number, DrumRecipe> = {
+  ...RECIPES,
+  36: kick808,
+  37: rim808,
+  38: snare808,
+  39: clap808,
+  41: tom808(80),
+  42: (p, velocity) => hat808(p, velocity, 0.022, LEVEL.hat808),
+  45: tom808(120),
+  46: (p, velocity) => hat808(p, velocity, 0.24, LEVEL.openHat808),
+  48: tom808(165),
+};
+
+/** The electronic kit: its own drums, the ordinary kit's for the rest. */
+const RECIPES_ELECTRO: Record<number, DrumRecipe> = {
+  ...RECIPES,
+  36: kickElectro,
+  38: snareElectro,
+  42: (p, velocity) => hatElectro(p, velocity, 0.03, LEVEL.hatElectro),
+  46: (p, velocity) => hatElectro(p, velocity, 0.28, LEVEL.openHatElectro),
+  51: rideElectro,
+};
+
+/** The kits, by the instrument id that plays them. */
+const KITS: Record<string, Record<number, DrumRecipe>> = { drums: RECIPES, "drums-808": RECIPES_808, "drums-electro": RECIPES_ELECTRO };
+
 /** The open hi-hats still ringing, for each place drums are played into: a closed hat cuts them short, as a real pedal does. */
 const openHats = new WeakMap<AudioNode, OneShotVoice[]>();
 
@@ -240,8 +447,14 @@ const openHats = new WeakMap<AudioNode, OneShotVoice[]>();
  * (`silence` still cuts it off).
  */
 export function playDrum(ctx: BaseAudioContext, destination: AudioNode, pitch: number, velocity: number, when: number): Voice {
-  const drum = RECIPES[pitch] ? pitch : SAME_AS[pitch];
-  const recipe = RECIPES[drum];
+  return playKitDrum("drums", ctx, destination, pitch, velocity, when);
+}
+
+/** As `playDrum`, on one of the kits ("drums", "drums-808", "drums-electro"; the ordinary kit for any other id). */
+export function playKitDrum(kit: string, ctx: BaseAudioContext, destination: AudioNode, pitch: number, velocity: number, when: number): Voice {
+  const recipes = KITS[kit] ?? RECIPES;
+  const drum = recipes[pitch] ? pitch : SAME_AS[pitch];
+  const recipe = recipes[drum];
   if (!recipe) return silentVoice();
   const start = Math.max(when, ctx.currentTime);
   const voice = makeVoice(ctx, destination, recipe(new Patch(ctx, start), velocity));

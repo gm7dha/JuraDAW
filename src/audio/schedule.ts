@@ -4,7 +4,8 @@
  * helpers for looping and for knowing where the song ends. Both the live
  * player and the mixdown ask these the same questions.
  */
-import type { Loop, Song } from "../model/types";
+import { arpNotes } from "../model/shaping";
+import type { Arp, Loop, Song } from "../model/types";
 import { MIN_LENGTH } from "../model/types";
 import { beatsToSeconds, secondsToBeats } from "./shared";
 
@@ -79,12 +80,15 @@ export function notesBetween(song: Song, fromBeat: number, toBeat: number, optio
   const cutAt = options.cutAt ?? Infinity;
   const until = Math.min(toBeat, cutAt);
   const tracks = tracksToPlay(song, "instrument", options.everyTrack);
+  const arps = new Map(song.tracks.filter((t) => t.arp).map((t) => [t.id, t.arp as Arp]));
   const events: NoteEvent[] = [];
   for (const clip of song.clips) {
     if (clip.kind !== "midi" || !tracks.has(clip.trackId)) continue;
     const clipEnd = clip.start + clip.length;
     if (clipEnd <= fromBeat || clip.start >= until) continue;
-    for (const note of clip.notes) {
+    // On a track with an arpeggiator, held chords become notes one at a time.
+    const arp = arps.get(clip.trackId);
+    for (const note of arp ? arpNotes(clip, arp) : clip.notes) {
       if (note.start < 0 || note.start >= clip.length) continue;
       const beat = clip.start + note.start;
       if (beat < fromBeat || beat >= until) continue;

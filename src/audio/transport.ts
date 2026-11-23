@@ -8,6 +8,7 @@
  */
 import type { AudioClip, Clip, Song, Track } from "../model/types";
 import { fadeNode, shapedInput } from "./clipLevel";
+import { clipSource } from "./reverse";
 import type { Sound } from "./audioStore";
 import { instrumentById } from "./instruments";
 import { playClick } from "./metronome";
@@ -72,7 +73,7 @@ interface PlayingClip {
 
 /** What makes a clip the same clip for playing purposes: if any of this changes, it's started afresh. */
 function signatureOf(clip: AudioClip): string {
-  return `${clip.trackId}|${clip.audioId}|${clip.start}|${clip.offset}|${clip.duration}|${clip.fadeIn ?? 0}|${clip.fadeOut ?? 0}`;
+  return `${clip.trackId}|${clip.audioId}|${clip.start}|${clip.offset}|${clip.duration}|${clip.fadeIn ?? 0}|${clip.fadeOut ?? 0}|${clip.reverse ? "r" : ""}`;
 }
 
 export class Transport {
@@ -317,7 +318,9 @@ export class Transport {
     if (playing && playing.endTime > start + CLIP_FADE) this.endClip(playing, start);
 
     const source = ctx.createBufferSource();
-    source.buffer = sound.buffer;
+    // Backwards: the reversed copy of the sound, from the mirror of where it would start.
+    const from = clipSource(ctx, clip, sound.buffer, offset);
+    source.buffer = from.buffer;
     const level = ctx.createGain();
     const gain = clamp(event.gain, 0, 2);
     level.gain.setValueAtTime(0, start);
@@ -329,7 +332,7 @@ export class Transport {
     const fades = fadeNode(ctx, clip, secondsToBeats(clip.duration, this.bpm), sinceStart(offset), sinceStart(offset + duration), (b) => start + beatsToSeconds(b - sinceStart(offset), this.bpm));
     if (fades) source.connect(level).connect(fades).connect(input);
     else source.connect(level).connect(input);
-    source.start(start, offset, duration);
+    source.start(start, from.offset, duration);
 
     const entry: PlayingClip = { signature, lap: this.lap, endTime: start + duration, source, level, gain: event.gain };
     this.clips.set(event.clipId, entry);

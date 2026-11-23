@@ -141,7 +141,15 @@ export function HelpDialog() {
           clip</em>, which opens the track's filter up (or closes it down) while the clip plays.
         </li>
         <li>
-          <strong>For a build</strong>, add a track playing <em>Noise sweep</em> and draw one long note: it rises for as long as the note lasts (a note below middle C falls instead).
+          <strong>For a build</strong>, add a track playing <em>Noise sweep</em> and draw one long note: it rises for as long as the note lasts (a note below middle C falls instead). The Library's{" "}
+          <em>Build-up</em> rolls a snare faster and faster under it.
+        </li>
+        <li>
+          <strong>Arpeggiator</strong>: tick it under a track's effects and the chords on that track play one note at a time, in a pattern. Write long, held chords and let it do the rest.
+        </li>
+        <li>
+          <strong>Drum machines</strong>: the <em>808 kit</em> (trap and hip-hop) and the <em>Electronic kit</em> (house and techno) are with the instruments. A recording's clip can be played
+          backwards: tick <em>Play backwards</em>.
         </li>
       </ul>
       <h3 className="help-heading">Use JuraDAW with Claude</h3>

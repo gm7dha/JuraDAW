@@ -3291,3 +3291,18 @@ button.display-button {
 .filter-kind {
   margin: 4px 0 6px;
 }
+
+/* The arpeggiator's four patterns, in a row. */
+.segmented.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.arp-style button {
+  font-size: 11.5px;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.field select {
+  width: 100%;
+}

@@ -75,6 +75,21 @@
   filter_sweep; describe_song says them. Tests: tests/shaping; devkit-style measuring of every effect through the
   real mixdown is worth repeating when the mixer changes (drive adds harmonics, pump dips on the beat, a fade
   swells, a sweep opens the filter, nothing clips).
+- v0.4: more of the same, also optional and left out when off. Track `lows`/`highs` (−1…1, `tone`, ±`TONE_DB` 12 dB
+  shelves at `LOWS_HZ`/`HIGHS_HZ`; "Bass" and "Treble" on screen and to Claude) and `chop` (0–1: each sixteenth open
+  for `CHOP_OPEN_SHARE` then cut to `chopFloor`, booked in `scheduleShaping` like the pump); the strip is now input →
+  drive → crush → lows → highs → filter → wobble → pump → chop → fader. Track `arp` {style up/down/updown/random,
+  rate in beats from `ARP_RATES`, octaves 1–3} (`cleanArp`, `DEFAULT_ARP`): `arpNotes(clip, arp)` (pure, remembered
+  per clip object) turns held chords into one note a step — the notes sounding at each step, lowest up, over the
+  octaves, the count starting again when the chord changes, "random" the same every time — and `notesBetween` plays
+  those on an arp track; the clip's own notes are never changed. Audio clip `reverse: true` (`src/audio/reverse.ts`:
+  `reversedBuffer` made once per sound, `clipSource` plays from the mirror of where the clip would start;
+  WavePicture draws it backwards). Drum kits: `DRUM_KITS`/`isDrumKit` in document.ts — "drums", "drums-808",
+  "drums-electro"; **always ask `isDrumKit`, never `=== "drums"`**. drums.ts `playKitDrum(kit, …)`: each kit has
+  its own recipes for some drums and the ordinary kit's for the rest, same keys and names. "bass-808" in
+  instruments.ts and `BASS_INSTRUMENTS`. Library: `Beat.kit` (trap on the 808 kit, house/techno/dnb on the
+  electronic one), the build-up (`makeBuild`), the 808 bass line; a drum beat goes on any drum kit already there.
+
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -135,7 +150,7 @@
   edits and tempo changes are heard while it plays and a loop goes round without a gap; stops by itself when the song
   runs out), `schedule.ts` (pure: `notesBetween`, `audioClipsBetween`, `audibleTracks` — mute and solo —,
   `nextLoopWindow`, `playEndBeat`), `instruments.ts` (`INSTRUMENTS`: piano, felt-piano, electric-piano, organ, strings,
-  pad, choir, bass, synth-bass, sub-bass, growl-bass, lead, supersaw, wobble, pluck, bells, sweep — each a recipe that builds one note from oscillators, noise and filters, levels
+  pad, choir, bass, synth-bass, sub-bass, growl-bass, bass-808, lead, supersaw, wobble, pluck, bells, sweep — each a recipe that builds one note from oscillators, noise and filters, levels
   matched by measuring — and drums; `instrumentById` falls back to the piano), `drums.ts` (the kit, every hit made on
   the spot), `patch.ts` + `voice.ts` (building one note, and letting go of it without a click), `pluck.ts` (pure
   Karplus–Strong), `metronome.ts` (the click, also the count-in), `record.ts` (the microphone with the browser's

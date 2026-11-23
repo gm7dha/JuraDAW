@@ -10,6 +10,7 @@
  *
  * Times come out in beats (quarter notes), as everywhere else in JuraDAW.
  */
+import { isDrumKit } from "../model/document";
 import { DEFAULT_BEATS_PER_BAR, DEFAULT_BPM, MOST_BEATS, MOST_CLIPS, MOST_NOTES, instrumentLabel, newId, newSong, newTrack } from "../model/document";
 import { EPS, r6 } from "../model/time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "../model/types";
@@ -67,6 +68,7 @@ const PROGRAM_OF: Record<string, number> = {
   supersaw: 81,
   wobble: 90,
   sweep: 122,
+  "bass-808": 38,
 };
 
 /** The nearest of JuraDAW's instruments to a General MIDI one; a piano when nothing is near (or the file doesn't say). */
@@ -452,7 +454,7 @@ export function songParts(song: Song): MidiPart[] {
   return song.tracks
     .filter((t) => t.kind === "instrument")
     .map((track): MidiPart => {
-      const drums = track.instrument === "drums";
+      const drums = isDrumKit(track.instrument);
       const notes: MidiNote[] = [];
       for (const clip of song.clips) {
         if (clip.kind !== "midi" || clip.trackId !== track.id) continue;

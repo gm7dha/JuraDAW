@@ -10,6 +10,7 @@
 import { BASS_PATTERNS } from "./bass";
 import { CHORD_PATTERNS } from "./chords";
 import { DRUM_PATTERNS } from "./drums";
+import { isDrumKit } from "../model/document";
 import type { LibraryPattern, MadePattern, Values } from "./kit";
 import { MELODY_PATTERNS } from "./melodies";
 
@@ -67,13 +68,13 @@ export function makePattern(pattern: LibraryPattern, values: Readonly<Record<str
 }
 
 /** The instruments that play bass lines (a bass line on a piano or strings sounds wrong, and the other way round). */
-export const BASS_INSTRUMENTS: readonly string[] = ["bass", "synth-bass", "sub-bass", "growl-bass"];
+export const BASS_INSTRUMENTS: readonly string[] = ["bass", "synth-bass", "sub-bass", "growl-bass", "bass-808"];
 
 /**
  * Whether a pattern suits a track playing this instrument: drum beats only go on a drum kit, bass lines only on a
  * bass, and chords and tunes on anything else (never the other way round: their notes would be the wrong sounds).
  */
 export function patternSuitsInstrument(pattern: Pick<LibraryPattern, "kind">, instrument: string): boolean {
-  if (pattern.kind === "drums" || instrument === "drums") return pattern.kind === "drums" && instrument === "drums";
+  if (pattern.kind === "drums" || isDrumKit(instrument)) return pattern.kind === "drums" && isDrumKit(instrument);
   return (pattern.kind === "bass") === BASS_INSTRUMENTS.includes(instrument);
 }

@@ -734,7 +734,7 @@ const ClipBlock = memo(function ClipBlock({ clip, colour, top, start, length, ro
       title={`${clip.kind === "midi" ? `${clip.name} — double-click to edit its notes` : `${clip.name} — a recording; drag its edges to trim it`}${over ? ". It lies over another clip (both play): drag one of them aside" : ""}`}
     >
       {renaming ? <ClipNameBox clip={clip} done={() => setRenaming(null)} /> : <span className="clip-name">{clip.name}</span>}
-      {roomy && <div className="clip-picture">{clip.kind === "midi" ? <NotesPicture clip={clip} /> : <WavePicture audioId={clip.audioId} offset={clip.offset} duration={clip.duration} width={width} version={audioVersion} />}</div>}
+      {roomy && <div className="clip-picture">{clip.kind === "midi" ? <NotesPicture clip={clip} /> : <WavePicture audioId={clip.audioId} offset={clip.offset} duration={clip.duration} reverse={!!clip.reverse} width={width} version={audioVersion} />}</div>}
       {edges && (
         <>
           <span className="clip-edge start" data-edge="start" />
@@ -780,11 +780,13 @@ const NotesPicture = memo(function NotesPicture({ clip }: { clip: Extract<Clip, 
 });
 
 /** An audio clip's waveform, from the engine's peaks (blank until the sound is loaded). */
-function WavePicture({ audioId, offset, duration, width, version }: { audioId: string; offset: number; duration: number; width: number; version: number }) {
+function WavePicture({ audioId, offset, duration, reverse, width, version }: { audioId: string; offset: number; duration: number; reverse: boolean; width: number; version: number }) {
   const buckets = Math.max(8, Math.min(1200, Math.round(width / 2)));
   const path = useMemo(() => {
-    const peaks = peaksOf(audioId, buckets, offset, offset + duration);
-    if (!peaks) return null;
+    const found = peaksOf(audioId, buckets, offset, offset + duration);
+    if (!found) return null;
+    // A clip played backwards is drawn backwards.
+    const peaks = reverse ? found.slice().reverse() : found;
     let top = "";
     let bottom = "";
     for (let i = 0; i < peaks.length; i++) {
@@ -795,7 +797,7 @@ function WavePicture({ audioId, offset, duration, width, version }: { audioId: s
     return `${top}${bottom}Z`;
     // `version` is here so the picture is drawn again once the sound has loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioId, buckets, offset, duration, version]);
+  }, [audioId, buckets, offset, duration, reverse, version]);
   if (!path) return <span className="clip-loading muted small">…</span>;
   return (
     <svg className="clip-wave" viewBox={`0 0 ${buckets - 1} 2`} preserveAspectRatio="none" aria-hidden="true">

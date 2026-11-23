@@ -687,7 +687,7 @@ try {
     });
     await page.waitForSelector(".track-header:has-text('Choir')");
     // The side panel has the track's own effects and the clip's shape; a slider changes the song.
-    for (const label of ["Drive", "Crush", "Filter", "Filter ring", "Wobble", "Pump", "Clip volume", "Fade in", "Fade out"]) {
+    for (const label of ["Drive", "Crush", "Bass", "Treble", "Filter", "Filter ring", "Wobble", "Pump", "Chop", "Clip volume", "Fade in", "Fade out"]) {
       expect((await page.locator(`.side-panel input[type=range][aria-label="${label}"]`).count()) === 1, `a "${label}" slider in the side panel`);
     }
     const trackNow = (field) => get(`s.history.present.tracks.find((t) => t.id === "${shaped.id}").${field}`);
@@ -719,8 +719,16 @@ try {
     await until(`engine.level("${shaped.id}") > 0.05`, "the choir being heard through its effects");
     await page.keyboard.press("Space");
     await until("!s.playing", "playing to stop");
-    // Every new instrument is offered, and picking one changes the track.
-    for (const name of ["Soft piano", "Choir", "Sub bass", "Gritty bass", "Big saw", "Wobbly synth", "Noise sweep"]) {
+    // The arpeggiator: on, then a pattern picked.
+    await page.getByLabel("Arpeggiator — chords one note at a time").check();
+    expect((await trackNow("arp.style")) === "up", "the arpeggiator switched on, going up");
+    await page.click('.side-panel [aria-label="Arpeggiator pattern"] button:has-text("Down")');
+    await page.selectOption('.side-panel select[aria-label="Arpeggiator speed"]', String(1 / 3));
+    expect((await trackNow("arp.style")) === "down" && Math.abs((await trackNow("arp.rate")) - 1 / 3) < 1e-9, "the arpeggiator going down in triplets");
+    await page.locator('.side-panel input[aria-label="Bass"]').fill("0.5");
+    expect((await trackNow("lows")) === 0.5, "the Bass slider lifting the low end");
+    // Every new instrument and kit is offered, and picking one changes the track.
+    for (const name of ["Soft piano", "Choir", "Sub bass", "Gritty bass", "808 bass", "Big saw", "Wobbly synth", "Noise sweep", "808 kit", "Electronic kit"]) {
       expect((await page.locator(`.side-panel button:has-text("${name}")`).count()) >= 1, `"${name}" among the instruments`);
     }
     await page.locator('.side-panel button:has-text("Wobbly synth")').first().click();
