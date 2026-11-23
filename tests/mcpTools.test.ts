@@ -172,6 +172,31 @@ describe("shaping the sound", () => {
   });
 });
 
+describe("kits, tone, chop and the arpeggiator", () => {
+  it("are all within Claude's reach", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "drums-808", name: "Beat" });
+    await ok(s, "add_clip", { track: "Beat", bars: 1, notes: [{ pitch: "kick", start: 0 }, { pitch: "clap", start: 2 }] });
+    expect(midi(s)[0].notes.map((n) => n.pitch)).toEqual([36, 39]);
+    // A drum beat from the library goes on the 808 kit that's there, after its clip.
+    await ok(s, "insert_library_pattern", { pattern: "drums-house" });
+    expect(s.song.tracks).toHaveLength(1);
+    await ok(s, "add_track", { instrument: "pluck", name: "Arp", bass: -30, treble: 50, chop: 40, arpeggiator: { style: "updown", rate: "sixteenths", octaves: 2 } });
+    expect(s.song.tracks[1]).toMatchObject({ lows: -0.3, highs: 0.5, chop: 0.4, arp: { style: "updown", rate: 0.25, octaves: 2 } });
+    expect(await ok(s, "describe_song")).toMatch(/bass -30, treble 50, chop 40%, arpeggiator updown, sixteenth notes, 2 octaves/);
+    await ok(s, "edit_track", { track: "Arp", arpeggiator: { rate: "triplets" } });
+    expect(s.song.tracks[1].arp).toEqual({ style: "updown", rate: 1 / 3, octaves: 2 });
+    await ok(s, "edit_track", { track: "Arp", arpeggiator: null, chop: 0 });
+    expect("arp" in s.song.tracks[1] || "chop" in s.song.tracks[1]).toBe(false);
+    expect(await bad(s, "edit_track", { track: "Arp", arpeggiator: { rate: "fast" } })).toMatch(/"sixteenths"/);
+    expect(await bad(s, "edit_track", { track: "Arp", bass: 300 })).toMatch(/bass/);
+    await ok(s, "add_clip", { track: "Arp", notes: [{ pitch: "C4", start: 0, length: 4 }] });
+    expect(await bad(s, "edit_clip", { track: "Arp", clip: 1, reverse: true })).toMatch(/only recordings/);
+    await ok(s, "insert_library_pattern", { pattern: "bass-808", settings: { key: "F", scale: "minor" } });
+    expect(s.song.tracks.map((t) => t.instrument)).toContain("bass-808");
+  });
+});
+
 describe("the library", () => {
   it("lists every pattern and puts each in on a track of its own kind", async () => {
     const { s } = session();

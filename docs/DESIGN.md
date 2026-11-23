@@ -84,5 +84,8 @@ files when you Save.
 - **v0.3** — shaping the sound: each track's own effects (drive, crush, a filter with resonance, wobble, pump), a
   clip's own volume, fades and filter sweep, and seven more instruments (soft piano, choir, sub and gritty basses,
   big saw, wobbly synth, noise sweep).
+- **v0.4** — the 808 and electronic drum kits, an 808 bass, trap/house/techno/drum-and-bass/lo-fi beats and a
+  build-up in the Library, an arpeggiator on every instrument track, Bass/Treble tone and Chop effects, recordings
+  played backwards.
 - **Later** — recent songs, volume changes drawn over time, more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

@@ -7,9 +7,11 @@ import { describe, expect, it } from "vitest";
 import { crushCurve, crushSteps, driveCurve, driveTrim, resonanceQ } from "../src/audio/mixer";
 import { INSTRUMENTS } from "../src/audio/instruments";
 import { BASS_INSTRUMENTS, LIBRARY, patternSuitsInstrument } from "../src/library/catalogue";
-import { instrumentLabel, newSong, newTrack, parseSong, readSongFile, songFileText } from "../src/model/document";
+import { instrumentLabel, isDrumKit, newSong, newTrack, parseSong, readSongFile, songFileText } from "../src/model/document";
+import { mirroredOffset } from "../src/audio/reverse";
+import { notesBetween } from "../src/audio/schedule";
 import * as edits from "../src/model/edits";
-import { CUTOFF_HIGH_HZ, CUTOFF_LOW_HZ, clipFades, clipGain, clipIsShaped, clipLevelAt, clipLevelPoints, cleanFilter, cutoffHz, effectsOf, filterIsOn, hasEffects, hzText, pumpFloor, sweepAt, trackHasSweeps } from "../src/model/shaping";
+import { CUTOFF_HIGH_HZ, CUTOFF_LOW_HZ, DEFAULT_ARP, arpNotes, chopFloor, cleanArp, toneWords, clipFades, clipGain, clipIsShaped, clipLevelAt, clipLevelPoints, cleanFilter, cutoffHz, effectsOf, filterIsOn, hasEffects, hzText, pumpFloor, sweepAt, trackHasSweeps } from "../src/model/shaping";
 import type { MidiClip, Song } from "../src/model/types";
 
 function songWith(): { song: Song; track: string; clip: string } {
@@ -26,7 +28,7 @@ describe("a track's own effects", () => {
   it("are all off on a new track, and a track that leaves them out", () => {
     const { song, track } = songWith();
     const t = trackOf(song, track);
-    expect(effectsOf(t)).toEqual({ drive: 0, crush: 0, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0 });
+    expect(effectsOf(t)).toEqual({ drive: 0, crush: 0, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0, lows: 0, highs: 0, chop: 0 });
     expect(hasEffects(t)).toBe(false);
     expect("drive" in t || "filter" in t).toBe(false);
   });
@@ -34,7 +36,7 @@ describe("a track's own effects", () => {
   it("are kept inside their limits, and left out of the track again when turned right down", () => {
     const { song, track } = songWith();
     let s = edits.updateTrack(song, track, { drive: 0.4, crush: 7, chorus: 0.25, pump: -1, filter: { cutoff: 0.5 } });
-    expect(effectsOf(trackOf(s, track))).toEqual({ drive: 0.4, crush: 1, filter: { kind: "low", cutoff: 0.5, resonance: 0 }, chorus: 0.25, pump: 0 });
+    expect(effectsOf(trackOf(s, track))).toEqual({ drive: 0.4, crush: 1, filter: { kind: "low", cutoff: 0.5, resonance: 0 }, chorus: 0.25, pump: 0, lows: 0, highs: 0, chop: 0 });
     expect(hasEffects(trackOf(s, track))).toBe(true);
     // Only part of the filter changes at a time.
     s = edits.updateTrack(s, track, { filter: { resonance: 0.3 } });
@@ -142,7 +144,7 @@ describe("in files", () => {
     const read = readSongFile(songFileText(s));
     expect(read.ok && read.song).toEqual(s);
     const odd = parseSong({ ...s, tracks: [{ ...s.tracks[0], drive: "lots", crush: 5, pump: NaN, filter: { kind: "sideways", cutoff: 4, resonance: -1 }, chorus: null }], clips: [{ ...s.clips[0], gain: 99, fadeIn: -2, fadeOut: "x", sweep: { from: "a", to: 1 } }] })!;
-    expect(effectsOf(odd.tracks[0])).toEqual({ drive: 0, crush: 1, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0 });
+    expect(effectsOf(odd.tracks[0])).toEqual({ drive: 0, crush: 1, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0, lows: 0, highs: 0, chop: 0 });
     expect(odd.clips[0]).toMatchObject({ gain: 2 });
     expect(odd.clips[0].fadeIn).toBeUndefined();
     expect(odd.clips[0].fadeOut).toBeUndefined();
@@ -210,5 +212,119 @@ describe("the new instruments", () => {
       expect(patternSuitsInstrument(chords, id)).toBe(false);
     }
     for (const id of ["choir", "wobble", "supersaw", "felt-piano"]) expect(patternSuitsInstrument(chords, id)).toBe(true);
+  });
+});
+
+describe("tone and chop", () => {
+  it("are kept inside their limits and left out when back at nothing", () => {
+    const { song, track } = songWith();
+    let s = edits.updateTrack(song, track, { lows: 0.5, highs: -3, chop: 0.7 });
+    expect(effectsOf(trackOf(s, track))).toMatchObject({ lows: 0.5, highs: -1, chop: 0.7 });
+    expect(hasEffects(trackOf(s, track))).toBe(true);
+    expect(toneWords(0.5)).toBe("+6 dB");
+    expect(toneWords(-0.25)).toBe("−3 dB");
+    expect(toneWords(0)).toBe("flat");
+    expect(chopFloor(0)).toBe(1);
+    expect(chopFloor(1)).toBe(0);
+    s = edits.updateTrack(s, track, { lows: 0, highs: 0, chop: 0 });
+    const t = trackOf(s, track);
+    expect("lows" in t || "highs" in t || "chop" in t).toBe(false);
+  });
+});
+
+describe("the arpeggiator", () => {
+  const chord = (pitches: number[], start: number, length: number) => pitches.map((pitch) => ({ id: `n${pitch}-${start}`, pitch, start, length, velocity: 90 }));
+  const clip = (notes: ReturnType<typeof chord>, length = 4): MidiClip => ({ id: "c", trackId: "t", name: "c", start: 0, kind: "midi", length, notes });
+
+  it("plays a held chord one note at a time, in each pattern", () => {
+    const c = clip(chord([60, 64, 67], 0, 4));
+    const pitches = (style: "up" | "down" | "updown" | "random", rate = 0.5, octaves = 1) => arpNotes(c, { style, rate, octaves }).map((n) => n.pitch);
+    expect(pitches("up")).toEqual([60, 64, 67, 60, 64, 67, 60, 64]);
+    expect(pitches("down")).toEqual([67, 64, 60, 67, 64, 60, 67, 64]);
+    expect(pitches("updown")).toEqual([60, 64, 67, 64, 60, 64, 67, 64]);
+    expect(pitches("up", 1, 2)).toEqual([60, 64, 67, 72]);
+    const random = pitches("random", 0.25);
+    expect(random).toHaveLength(16);
+    expect(random.every((p) => [60, 64, 67].includes(p))).toBe(true);
+    expect(new Set(random).size).toBeGreaterThan(1);
+    // The same every time.
+    expect(arpNotes(clip(chord([60, 64, 67], 0, 4)), { style: "random", rate: 0.25, octaves: 1 }).map((n) => n.pitch)).toEqual(random);
+    const steps = arpNotes(c, { style: "up", rate: 0.5, octaves: 1 });
+    expect(steps.map((n) => n.start)).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]);
+    expect(steps.every((n) => n.length === 0.45 && n.velocity === 90)).toBe(true);
+  });
+
+  it("starts the pattern again when the chord changes, and rests where nothing is held", () => {
+    const c = clip([...chord([60, 64, 67], 0, 2), ...chord([57, 60, 64], 3, 1)], 4);
+    expect(arpNotes(c, { style: "up", rate: 0.5, octaves: 1 }).map((n) => [n.start, n.pitch])).toEqual([
+      [0, 60], [0.5, 64], [1, 67], [1.5, 60],
+      [3, 57], [3.5, 60],
+    ]);
+  });
+
+  it("is switched on, changed a part at a time and off, and read carefully from a file", () => {
+    const { song, track } = songWith();
+    let s = edits.updateTrack(song, track, { arp: {} });
+    expect(trackOf(s, track).arp).toEqual(DEFAULT_ARP);
+    s = edits.updateTrack(s, track, { arp: { style: "updown", octaves: 9 } });
+    expect(trackOf(s, track).arp).toEqual({ style: "updown", rate: 0.25, octaves: 3 });
+    expect(edits.updateTrack(s, track, { arp: { style: "updown" } })).toBe(s);
+    expect(cleanArp({ style: "sideways", rate: 0.3, octaves: "two" })).toEqual({ style: "up", rate: 0.25, octaves: 1 });
+    expect(cleanArp(null)).toBeUndefined();
+    const read = parseSong(JSON.parse(songFileText(s)));
+    expect(read?.tracks[0].arp).toEqual({ style: "updown", rate: 0.25, octaves: 3 });
+    s = edits.updateTrack(s, track, { arp: null });
+    expect("arp" in trackOf(s, track)).toBe(false);
+  });
+
+  it("is what the song plays", () => {
+    const { song, track } = songWith();
+    const s = edits.updateTrack(song, track, { arp: { style: "up", rate: 1, octaves: 2 } });
+    const played = notesBetween(s, 0, 100);
+    expect(played.map((n) => [n.beat, n.pitch])).toEqual([[4, 60], [5, 72], [6, 60], [7, 72], [8, 60], [9, 72], [10, 60], [11, 72]]);
+    expect(notesBetween(song, 0, 100)).toHaveLength(1);
+  });
+});
+
+describe("recordings played backwards", () => {
+  it("play from the mirror of where they would have started", () => {
+    // A 10 s sound; the clip plays 2 s to 6 s of it.
+    const clip = { offset: 2, duration: 4 };
+    expect(mirroredOffset(10, clip, 2)).toBe(4);
+    // Started 1 s into the clip: 1 s into the reversed stretch.
+    expect(mirroredOffset(10, clip, 3)).toBe(5);
+  });
+
+  it("are switched on and off, and kept in files", () => {
+    const track = newTrack("audio", "", []);
+    const info = { id: "s1", name: "Voice", seconds: 3, sampleRate: 44100, channels: 1 };
+    let song = edits.addTrack(newSong("r"), track);
+    const clip = edits.makeAudioClip(track, 0, info);
+    song = edits.addClips(song, [clip], [info]);
+    const on = edits.updateClip(song, clip.id, { reverse: true });
+    expect(edits.findClip(on, clip.id)).toMatchObject({ reverse: true });
+    expect(edits.updateClip(on, clip.id, { reverse: true })).toBe(on);
+    const read = parseSong(JSON.parse(songFileText(on)));
+    expect(read?.clips[0]).toMatchObject({ reverse: true });
+    const off = edits.updateClip(on, clip.id, { reverse: false });
+    expect("reverse" in edits.findClip(off, clip.id)!).toBe(false);
+  });
+});
+
+describe("the drum kits", () => {
+  it("are three, each a drum kit to the library, the tools and MIDI files", () => {
+    for (const id of ["drums", "drums-808", "drums-electro"]) {
+      expect(isDrumKit(id)).toBe(true);
+      expect(INSTRUMENTS.find((i) => i.id === id)?.kind).toBe("drums");
+    }
+    expect(isDrumKit("piano")).toBe(false);
+    expect(isDrumKit(undefined)).toBe(false);
+    const beat = LIBRARY.find((p) => p.kind === "drums")!;
+    expect(patternSuitsInstrument(beat, "drums-808")).toBe(true);
+    expect(patternSuitsInstrument(LIBRARY.find((p) => p.kind === "chords")!, "drums-electro")).toBe(false);
+    for (const id of ["drums-trap", "drums-house", "drums-techno", "drums-dnb", "drums-lofi", "drums-build"]) expect(LIBRARY.some((p) => p.id === id)).toBe(true);
+    expect(LIBRARY.find((p) => p.id === "drums-trap")?.instrument).toBe("drums-808");
+    expect(LIBRARY.find((p) => p.id === "bass-808")?.instrument).toBe("bass-808");
+    expect(patternSuitsInstrument(LIBRARY.find((p) => p.id === "bass-808")!, "bass-808")).toBe(true);
   });
 });

@@ -2,7 +2,7 @@
  * The mixer: the path every sound takes on its way out, the same for live
  * playing and for the mixdown.
  *
- *   each track:  input → its own effects (drive → crush → filter → wobble → pump)
+ *   each track:  input → its own effects (drive → crush → tone → filter → wobble → pump → chop)
  *                      → volume (and mute/solo) → left–right → the mix
  *                                         ├→ its share to the reverb
  *                                         └→ its share to the echo
@@ -14,7 +14,7 @@
  * echo (repeats in time with the tempo) shared by all the tracks. Changes
  * are eased in over a few thousandths of a second so nothing clicks.
  */
-import { PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, cutoffHz, effectsOf, filterIsOn, pumpFloor, sweepAt, trackHasSweeps, type TrackEffects } from "../model/shaping";
+import { CHOP_OPEN_SHARE, HIGHS_HZ, LOWS_HZ, PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, TONE_DB, chopFloor, cutoffHz, effectsOf, filterIsOn, pumpFloor, sweepAt, trackHasSweeps, type TrackEffects } from "../model/shaping";
 import type { Clip, Song, Track } from "../model/types";
 import { audibleTracks } from "./schedule";
 import { beatsToSeconds, clamp, seededRandom } from "./shared";
@@ -137,8 +137,11 @@ interface Strip {
   drive: WaveShaperNode;
   driveOut: GainNode;
   crush: WaveShaperNode;
+  lows: BiquadFilterNode;
+  highs: BiquadFilterNode;
   filter: BiquadFilterNode;
   pump: GainNode;
+  chop: GainNode;
   /** Made the first time the track's wobble is turned up. */
   wobble: Wobble | null;
   /** The settings last put into the two curves (making a curve is work, so only when they change). */
@@ -289,8 +292,11 @@ export class Mixer {
       drive: ctx.createWaveShaper(),
       driveOut: ctx.createGain(),
       crush: ctx.createWaveShaper(),
+      lows: ctx.createBiquadFilter(),
+      highs: ctx.createBiquadFilter(),
       filter: ctx.createBiquadFilter(),
       pump: ctx.createGain(),
+      chop: ctx.createGain(),
       wobble: null,
       driveNow: 0,
       crushNow: 0,
@@ -303,8 +309,15 @@ export class Mixer {
     // With no curve a WaveShaper passes sound through untouched, and an "allpass" filter leaves it sounding the same.
     strip.drive.oversample = "2x";
     strip.filter.type = "allpass";
-    strip.input.connect(strip.drive).connect(strip.driveOut).connect(strip.crush).connect(strip.filter).connect(strip.pump);
-    strip.pump.connect(strip.fader).connect(strip.pan).connect(this.mix);
+    // The tone controls: shelves that lift or cut the low and the top end (0 dB = no change at all).
+    strip.lows.type = "lowshelf";
+    strip.lows.frequency.value = LOWS_HZ;
+    strip.lows.gain.value = 0;
+    strip.highs.type = "highshelf";
+    strip.highs.frequency.value = HIGHS_HZ;
+    strip.highs.gain.value = 0;
+    strip.input.connect(strip.drive).connect(strip.driveOut).connect(strip.crush).connect(strip.lows).connect(strip.highs).connect(strip.filter).connect(strip.pump);
+    strip.pump.connect(strip.chop).connect(strip.fader).connect(strip.pan).connect(this.mix);
     strip.pan.connect(strip.reverbSend).connect(this.reverbIn);
     strip.pan.connect(strip.echoSend).connect(this.echoIn);
     if (this.meters) strip.meter = this.makeMeter(strip.pan);
@@ -360,6 +373,8 @@ export class Mixer {
     this.set(strip.filter.Q, on ? resonanceQ(e.filter.resonance) : 0.7, atOnce);
     // While the song plays and a clip sweeps this filter, its place is set in time with the song (scheduleShaping).
     if (!(sweeps && this.shaping)) this.set(strip.filter.frequency, this.hz(e.filter.cutoff), atOnce);
+    this.set(strip.lows.gain, e.lows * TONE_DB, atOnce);
+    this.set(strip.highs.gain, e.highs * TONE_DB, atOnce);
     if (e.chorus > 0 && !strip.wobble) strip.wobble = this.makeWobble(strip);
     if (strip.wobble) {
       this.set(strip.wobble.wet.gain, 0.45 * e.chorus, atOnce);
@@ -396,6 +411,20 @@ export class Mixer {
           strip.pump.gain.linearRampToValueAtTime(1, t + beatSeconds * PUMP_SWELL_SHARE);
         }
       }
+      if (e.chop > 0) {
+        // Each sixteenth note: open for the first half, then cut down; the edges eased by a few thousandths of a second.
+        const floor = chopFloor(e.chop);
+        const step = beatsToSeconds(0.25, song.bpm);
+        const edge = Math.min(0.004, step * 0.1);
+        for (let k = Math.ceil(from * 4 - 1e-9); k < to * 4 - 1e-9; k++) {
+          const t = timeOf(k / 4);
+          if (t < now) continue;
+          strip.chop.gain.setValueAtTime(floor, t);
+          strip.chop.gain.linearRampToValueAtTime(1, t + edge);
+          strip.chop.gain.setValueAtTime(1, t + step * CHOP_OPEN_SHARE);
+          strip.chop.gain.linearRampToValueAtTime(floor, t + step * CHOP_OPEN_SHARE + edge);
+        }
+      }
       if (trackHasSweeps(song, track.id)) {
         const a = sweepAt(song, track.id, from, clipBeats) ?? e.filter.cutoff;
         const b = sweepAt(song, track.id, to - 1e-6, clipBeats) ?? e.filter.cutoff;
@@ -416,6 +445,8 @@ export class Mixer {
       if (!strip) continue;
       strip.pump.gain.cancelScheduledValues(now);
       strip.pump.gain.setTargetAtTime(1, now, SMOOTH);
+      strip.chop.gain.cancelScheduledValues(now);
+      strip.chop.gain.setTargetAtTime(1, now, SMOOTH);
       strip.filter.frequency.cancelScheduledValues(now);
       strip.filter.frequency.setTargetAtTime(this.hz(effectsOf(track).filter.cutoff), now, SMOOTH);
     }
@@ -448,7 +479,7 @@ export class Mixer {
       // Fade it out, then take it apart a moment later, so a track removed while sounding doesn't click.
       strip.fader.gain.setTargetAtTime(0, this.ctx.currentTime, SMOOTH);
       const takeApart = () => {
-        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.filter, strip.pump, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, ...(strip.wobble?.nodes ?? [])]) node.disconnect();
+        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.lows, strip.highs, strip.filter, strip.pump, strip.chop, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, ...(strip.wobble?.nodes ?? [])]) node.disconnect();
       };
       if (this.meters) setTimeout(takeApart, 150);
       else takeApart();

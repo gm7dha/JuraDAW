@@ -6,7 +6,9 @@ import type { LibraryPattern, Values } from "../src/library/kit";
 import { KEYS, PENTATONIC, PROGRESSIONS, SCALES, chordFrom, chordStep, degreeRoot, foldInto, inScale, keyIndex, scaleFor, scalePitch, scaleStep, sequenceChord, voiced, type ScaleName } from "../src/library/theory";
 import { DRUM_PITCHES, pitchName } from "../src/model/time";
 
-const INSTRUMENTS = ["piano", "electric-piano", "organ", "strings", "pad", "bass", "synth-bass", "lead", "pluck", "bells", "drums"];
+import { INSTRUMENTS as BUILT_IN } from "../src/audio/instruments";
+import { isDrumKit } from "../src/model/document";
+const INSTRUMENTS = BUILT_IN.map((i) => i.id);
 const DRUMS = new Set(DRUM_PITCHES.map((d) => d.pitch));
 const names = (pitches: number[]) => pitches.map(pitchName).join(" ");
 
@@ -85,7 +87,7 @@ describe("the library", () => {
       expect(p.description.length).toBeGreaterThan(20);
       expect(GROUP_ORDER).toContain(p.group);
       expect(INSTRUMENTS).toContain(p.instrument);
-      expect((p.kind === "drums") === (p.instrument === "drums")).toBe(true);
+      expect((p.kind === "drums") === isDrumKit(p.instrument)).toBe(true);
       expect(p.beatsPerBar === 4 || p.beatsPerBar === 3).toBe(true);
     }
   });

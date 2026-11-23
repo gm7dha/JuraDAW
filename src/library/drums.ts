@@ -75,6 +75,8 @@ interface Beat {
   /** One row a drum; each row is one bar long, or a whole number of bars (they come round in turn). */
   rows: [pitch: number, pattern: string][];
   bars?: number;
+  /** The kit it's written for ("drums" unless said): the 808 kit or the electronic kit. */
+  kit?: string;
 }
 
 function beat(spec: Beat): LibraryPattern {
@@ -118,7 +120,7 @@ function beat(spec: Beat): LibraryPattern {
     group: GROUP,
     icon: patternIcon(make({ ...defaults, bars: 2 }), beatsPerBar, true),
     kind: "drums",
-    instrument: "drums",
+    instrument: spec.kit ?? "drums",
     beatsPerBar,
     inputs,
     make,
@@ -128,6 +130,7 @@ function beat(spec: Beat): LibraryPattern {
 const SIXTEENTH = 0.25;
 const EIGHTH = 0.5;
 const TRIPLET = 1 / 3;
+const THIRTY_SECOND = 0.125;
 
 const BEATS: LibraryPattern[] = [
   beat({
@@ -256,6 +259,66 @@ const BEATS: LibraryPattern[] = [
       [KICK, "........x......."],
     ],
   }),
+  beat({
+    id: "drums-trap",
+    name: "Trap beat",
+    description: "On the 808 kit: a booming kick, a clap on beat 3 and ticking hi-hats that roll into each bar. Best at 130–150 beats a minute.",
+    kit: "drums-808",
+    step: THIRTY_SECOND,
+    rows: [
+      [HAT, "x...x...x...x...x.o.x...x...xoxo" + "x...x...x...x...x...x.o.x.o.oxxX"],
+      [CLAP, "................X..............." + "................X..............."],
+      [KICK, "X..........x......x............." + "X.........x.........x..........."],
+    ],
+  }),
+  beat({
+    id: "drums-house",
+    name: "House beat",
+    description: "On the electronic kit: a kick on every beat, claps on 2 and 4 and an open hi-hat between each kick.",
+    kit: "drums-electro",
+    step: SIXTEENTH,
+    rows: [
+      [HAT, "g...g...g...g..g"],
+      [OPEN_HAT, "..x...x...x...x."],
+      [CLAP, "....x.......x..."],
+      [KICK, "X...x...x...x..."],
+    ],
+  }),
+  beat({
+    id: "drums-techno",
+    name: "Techno beat",
+    description: "On the electronic kit: a driving kick, hi-hats on every off-beat and a rim click that comes round off the beat.",
+    kit: "drums-electro",
+    step: SIXTEENTH,
+    rows: [
+      [HAT, "o.x.o.x.o.x.o.x."],
+      [RIM, "...x.....x...x.."],
+      [KICK, "X...x...x...x..."],
+    ],
+  }),
+  beat({
+    id: "drums-dnb",
+    name: "Drum and bass",
+    description: "On the electronic kit: the fast two-step break — kick on 1 and just after 3, snare on 2 and 4. Best at 160–175 beats a minute.",
+    kit: "drums-electro",
+    step: SIXTEENTH,
+    rows: [
+      [HAT, "x.x.x.x.x.x.x.xo"],
+      [SNARE, "....X..g.g..X..."],
+      [KICK, "x.........x....."],
+    ],
+  }),
+  beat({
+    id: "drums-lofi",
+    name: "Lo-fi hip-hop",
+    description: "Lazy and soft: a dragging kick, a gentle snare and hi-hats that skip. Lovely with Crush and a little Wobble on the track.",
+    step: SIXTEENTH,
+    rows: [
+      [HAT, "x.oox.o.x.oox.go"],
+      [SNARE, "....o.......o..."],
+      [KICK, "x......x.xg....."],
+    ],
+  }),
 ];
 
 const FILL_STYLES: Record<string, [pitch: number, pattern: string][]> = {
@@ -326,4 +389,53 @@ const FILL: LibraryPattern = {
   make: makeFill,
 };
 
-export const DRUM_PATTERNS: LibraryPattern[] = [...BEATS, FILL];
+/** A build-up: the snare gets faster and louder bar by bar — beats, then eighths, sixteenths, thirty-seconds. */
+function makeBuild(v: Values): MadePattern {
+  const bars = Math.max(1, Math.round(n(v, "bars")) || 4);
+  const kit = str(v, "kit");
+  const notes: PatternNote[] = [];
+  const total = bars * 4;
+  // The rolls double in speed in equal shares of the build.
+  const shares = [1, 0.5, 0.25, 0.125];
+  for (let i = 0; i < shares.length; i++) {
+    const from = (total * i) / shares.length;
+    const to = (total * (i + 1)) / shares.length;
+    for (let t = from; t < to - 1e-9; t += shares[i]) {
+      const rise = t / total;
+      notes.push(note(kit === "clap" ? CLAP : SNARE, t, shares[i], Math.round(60 + 64 * rise)));
+    }
+  }
+  // A kick on every beat that drops out for the last bar, so the next part lands hard.
+  for (let t = 0; t < Math.max(0, total - 4); t++) notes.push(note(KICK, t, SIXTEENTH, 100));
+  notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return { length: total, notes };
+}
+
+const BUILD_INPUTS: PatternInput[] = [
+  { key: "bars", label: "Bars", kind: "count", default: 4, min: 2, max: 16 },
+  {
+    key: "kit",
+    label: "Rolling on",
+    kind: "choice",
+    default: "snare",
+    choices: [
+      { value: "snare", label: "Snare" },
+      { value: "clap", label: "Clap" },
+    ],
+  },
+];
+
+const BUILD: LibraryPattern = {
+  id: "drums-build",
+  name: "Build-up",
+  description: "The snare rolls faster and louder bar by bar to lift into a big moment, the kick dropping out at the end. Put a Noise sweep over it as well.",
+  group: GROUP,
+  icon: patternIcon(makeBuild({ bars: 4, kit: "snare" }), 4, true),
+  kind: "drums",
+  instrument: "drums-electro",
+  beatsPerBar: 4,
+  inputs: BUILD_INPUTS,
+  make: makeBuild,
+};
+
+export const DRUM_PATTERNS: LibraryPattern[] = [...BEATS, FILL, BUILD];

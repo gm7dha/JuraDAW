@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { INSTRUMENTS, instrumentById } from "../audio/instruments";
 import * as edits from "../model/edits";
-import { clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText } from "../model/shaping";
+import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
 import { useStore } from "../model/store";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type Song, type Track } from "../model/types";
 import { hear, playheadBeat } from "./engineApp";
@@ -207,6 +207,19 @@ function ClipShape({ song, clip }: { song: Song; clip: Clip }) {
         title="Die away to silence over this long at the clip's end (double-click for none)"
         make={(sg, v) => edits.updateClip(sg, clip.id, { fadeOut: v, fadeIn: Math.min(fades.fadeIn, length - v) })}
       />
+      {clip.kind === "audio" && (
+        <label className="check-row" title="Play this clip backwards">
+          <input
+            type="checkbox"
+            checked={!!clip.reverse}
+            onChange={(e) => {
+              useStore.getState().updateClip(clip.id, { reverse: e.target.checked });
+              e.currentTarget.blur();
+            }}
+          />
+          Play backwards
+        </label>
+      )}
       <label className="check-row" title="Move the track's filter from one place to another while this clip plays: opening up for a build, or closing down">
         <input
           type="checkbox"
@@ -241,6 +254,8 @@ function TrackEffects({ track }: { track: Track }) {
       </div>
       <SliderRow label="Drive" words={amount(e.drive)} value={e.drive} usual={0} title="Warmth, then grit, then fuzz (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { drive: v })} />
       <SliderRow label="Crush" words={amount(e.crush)} value={e.crush} usual={0} title="The rough, lo-fi sound of an old sampler or games console (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { crush: v })} />
+      <SliderRow label="Bass" words={toneWords(e.lows)} value={e.lows} min={-1} max={1} step={0.05} usual={0} title="More or less of the low end: boom and warmth (double-click for no change)" make={(sg, v) => edits.updateTrack(sg, track.id, { lows: Math.abs(v) < 0.03 ? 0 : v })} />
+      <SliderRow label="Treble" words={toneWords(e.highs)} value={e.highs} min={-1} max={1} step={0.05} usual={0} title="More or less of the top end: brightness and air (double-click for no change)" make={(sg, v) => edits.updateTrack(sg, track.id, { highs: Math.abs(v) < 0.03 ? 0 : v })} />
       <div className="segmented two filter-kind" role="radiogroup" aria-label="What the filter takes away">
         {(["low", "high"] as const).map((kind) => (
           <button
@@ -267,9 +282,74 @@ function TrackEffects({ track }: { track: Track }) {
       <SliderRow label="Filter ring" words={amount(e.filter.resonance)} value={e.filter.resonance} usual={0} title="A ringing edge where the filter cuts (resonance): a little adds bite, a lot whistles" make={(sg, v) => edits.updateTrack(sg, track.id, { filter: { resonance: v } })} />
       <SliderRow label="Wobble" words={amount(e.chorus)} value={e.chorus} usual={0} title="A slow drift in pitch that widens and thickens the sound, like a worn tape (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { chorus: v })} />
       <SliderRow label="Pump" words={amount(e.pump)} value={e.pump} usual={0} title="Dips the volume on every beat and lets it swell back, as dance music does (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { pump: v })} />
+      <SliderRow label="Chop" words={amount(e.chop)} value={e.chop} usual={0} title="Cuts the sound into sixteenth notes: a gentle flutter, or hard stutters when turned right up (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { chop: v })} />
+      {track.kind === "instrument" && <ArpSettings track={track} />}
     </>
   );
 }
+
+/** The arpeggiator: chords held on the track played one note at a time. */
+function ArpSettings({ track }: { track: Track }) {
+  const s = useStore.getState;
+  const arp = track.arp;
+  return (
+    <>
+      <label className="check-row" title="Play the chords on this track one note at a time, in a pattern, instead of all together">
+        <input
+          type="checkbox"
+          checked={!!arp}
+          onChange={(e) => {
+            s().updateTrack(track.id, { arp: e.target.checked ? DEFAULT_ARP : null });
+            e.currentTarget.blur();
+          }}
+        />
+        Arpeggiator <span className="muted">— chords one note at a time</span>
+      </label>
+      {arp && (
+        <>
+          <div className="segmented four arp-style" role="radiogroup" aria-label="Arpeggiator pattern">
+            {ARP_STYLES.map((style) => (
+              <button key={style} type="button" role="radio" aria-checked={arp.style === style} className={arp.style === style ? "selected" : ""} onClick={() => s().updateTrack(track.id, { arp: { style } })} title={ARP_STYLE_HINTS[style]}>
+                {ARP_STYLE_WORDS[style]}
+              </button>
+            ))}
+          </div>
+          <div className="field-row">
+            <label className="field">
+              <span className="field-label">Speed</span>
+              <select value={String(arp.rate)} onChange={(e) => s().updateTrack(track.id, { arp: { rate: Number(e.target.value) } })} aria-label="Arpeggiator speed">
+                {ARP_RATES.map((rate) => (
+                  <option key={rate} value={String(rate)}>
+                    {arpRateWords(rate)[0].toUpperCase() + arpRateWords(rate).slice(1)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Octaves</span>
+              <select value={String(arp.octaves)} onChange={(e) => s().updateTrack(track.id, { arp: { octaves: Number(e.target.value) } })} aria-label="Arpeggiator octaves">
+                {[1, 2, 3].map((o) => (
+                  <option key={o} value={String(o)}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="panel-hint">Hold chords in a clip: they play as a running pattern. The notes you see stay as you wrote them.</p>
+        </>
+      )}
+    </>
+  );
+}
+
+const ARP_STYLE_WORDS: Record<(typeof ARP_STYLES)[number], string> = { up: "Up", down: "Down", updown: "Up & down", random: "Random" };
+const ARP_STYLE_HINTS: Record<(typeof ARP_STYLES)[number], string> = {
+  up: "From the lowest note of the chord to the highest, round and round",
+  down: "From the highest note to the lowest",
+  updown: "Up, then back down again",
+  random: "The chord's notes in a jumbled order (the same jumble every time it plays)",
+};
 
 function TrackSettings({ song, track }: { song: Song; track: Track }) {
   const s = useStore.getState;

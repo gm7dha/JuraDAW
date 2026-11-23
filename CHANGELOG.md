@@ -6,6 +6,22 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.4 — Drum machines, arpeggiator and more effects
+
+- **Two new drum kits**: an **808 kit** (the booming kick, snappy snare and ticking hi-hats of trap and hip-hop) and
+  an **Electronic kit** (the punchy kick and crisp hats of house and techno). Pick one like any instrument: the
+  editor and the drum pads work the same.
+- **808 bass**: the long, deep, sliding bass of trap, under Bass.
+- **New beats in the Library**: Trap beat, House beat, Techno beat, Drum and bass, Lo-fi hip-hop, a **Build-up**
+  (the snare rolls faster and louder bar by bar) — and an **808 bass** line to go with the trap beat.
+- **Arpeggiator** on every instrument track: tick it and the chords on that track play one note at a time — up,
+  down, up and down, or in a jumbled order — in beats, eighths, triplets or sixteenths, over one to three octaves.
+  The notes you wrote stay as they are.
+- **More effects on every track**: **Bass** and **Treble** (more or less of the low end and the top end) and
+  **Chop** (cuts the sound into sixteenth notes, from a flutter to hard stutters).
+- **Play backwards**: a recording's clip can now be played in reverse.
+- Claude can use all of it.
+
 ## v0.3 — Shaping the sound
 
 - **Effects on every track**, in the panel on the left under Reverb and Echo: **Drive** (warmth, then grit, then

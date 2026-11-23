@@ -64,6 +64,12 @@ export const ICONS = {
   wobble: svg(`<circle cx="24" cy="24" r="17"/><circle cx="24" cy="24" r="3"/><circle cx="24" cy="13.5" r="3.2"/><circle cx="14.9" cy="29.3" r="3.2"/><circle cx="33.1" cy="29.3" r="3.2"/>`),
   /** A rush of noise getting bigger. */
   sweep: svg(`<path d="M5 38c10-1 22-6 37-27"/><path d="M34 11h8v8"/><path d="M8 30v2M14 26v4M20 21v6M26 16v7" opacity="0.6"/>`),
+  /** A drum machine's pads. */
+  "drums-808": svg(`<rect x="5" y="9" width="38" height="30" rx="4"/><rect x="10" y="22" width="7" height="6" rx="1.5"/><rect x="20.5" y="22" width="7" height="6" rx="1.5"/><rect x="31" y="22" width="7" height="6" rx="1.5"/><rect x="10" y="31" width="7" height="4" rx="1.5"/><rect x="20.5" y="31" width="7" height="4" rx="1.5"/><rect x="31" y="31" width="7" height="4" rx="1.5"/><path d="M11 15h8M27 15h10"/>`),
+  /** A speaker cone with a pulse. */
+  "drums-electro": svg(`<circle cx="21" cy="24" r="14"/><circle cx="21" cy="24" r="6"/><circle cx="21" cy="24" r="1.5"/><path d="M39 16c2.5 2 4 5 4 8s-1.5 6-4 8"/>`),
+  /** A deep wave with a slide down at its start. */
+  "bass-808": svg(`<rect x="5" y="8" width="38" height="32" rx="4"/><path d="M10 13c2 0 3 6 5 11s3.5 8 6 0 3.5-8 6 0 3.5 8 6 0"/>`),
   /** A drum and sticks. */
   drums: svg(
     `<ellipse cx="24" cy="23" rx="15" ry="5.5"/><path d="M9 23v12c0 3 6.7 5.5 15 5.5s15-2.5 15-5.5V23"/><path d="M15 28v11M24 29v11.5M33 28v11"/><path d="M6 6l14 13M42 6 28 19"/>`,

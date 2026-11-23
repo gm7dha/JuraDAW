@@ -16,7 +16,7 @@ import { create } from "zustand";
 
 import { findPattern, makePattern, patternSuitsInstrument } from "../library/patterns";
 import { copyClips, copyNotes, notesPastePlace, pasteClips, pasteNotes, type Clipboard } from "./clipboard";
-import { DEFAULT_INSTRUMENT, MOST_CLIPS, MOST_NOTES, newSong, newTrack } from "./document";
+import { DEFAULT_INSTRUMENT, MOST_CLIPS, MOST_NOTES, isDrumKit, newSong, newTrack } from "./document";
 import * as edits from "./edits";
 import { EPS, barIndex, clipEnd, r6, secondsToBeats, snapBeat, songLength } from "./time";
 import type { State, Toast } from "./storeApi";
@@ -550,7 +550,14 @@ export const useStore = create<State>()((set, get) => {
       let track: Track | null = selected && selected.kind === "instrument" && patternSuitsInstrument(pattern, selected.instrument) ? selected : null;
       let start = wanted;
       if (track) start = edits.freePlace(next, track.id, wanted, made.length, next.beatsPerBar);
-      else track = next.tracks.find((t) => t.kind === "instrument" && t.instrument === pattern.instrument && edits.placeIsFree(next, t.id, wanted, made.length)) ?? null;
+      else {
+        // A drum beat goes on any drum kit already there (its own kit first); anything else on its own instrument.
+        const free = (t: Track) => t.kind === "instrument" && edits.placeIsFree(next, t.id, wanted, made.length);
+        track =
+          next.tracks.find((t) => free(t) && t.instrument === pattern.instrument) ??
+          (pattern.kind === "drums" ? next.tracks.find((t) => free(t) && isDrumKit(t.instrument)) : undefined) ??
+          null;
+      }
       if (!track) {
         if (next.tracks.length >= MOST_TRACKS) {
           get().toast(TOO_MANY_TRACKS, "error");
