@@ -7,7 +7,7 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.7 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> **Status: v0.8 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
 > export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today
@@ -49,6 +49,8 @@ it's free.
 - **Import** sound files (WAV, MP3 and whatever else your browser plays) as clips, and MIDI files as tracks of notes.
 - **Export** the song — or just the looped part — as a **WAV** sound file that plays anywhere, or as a **MIDI** file
   for other music programs. A long export shows how long is left and can be stopped.
+- **Recent songs**: the last 12 songs you've worked on in this browser, a click away in the top bar — New or Open
+  never loses the song you had.
 - **Undo** for everything, with a **History** list to jump straight back to any of the last 100 steps.
 - **Save** to a `.juradaw` file, which holds the song and its recordings in one file, and open it later (or drag it
   onto the window). Your latest work is also kept in the browser. **Install it as an app** (Chrome/Edge) so it opens

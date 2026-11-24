@@ -10,6 +10,7 @@ import { MAX_BPM, MIN_BPM } from "../model/types";
 import { SHORT_VERSION } from "../version";
 import { Icons } from "./icons";
 import { importFromFile, newSongAsk, openFromFile, saveToFile } from "./fileActions";
+import { RecentMenu } from "./RecentMenu";
 import { LiveButton } from "./LiveButton";
 import { browserKind, installApp, installSteps, isInstalledApp, useCanInstall } from "./install";
 import { MidiButton } from "./Keys";
@@ -89,9 +90,10 @@ export function TopBar() {
           <Icons.Export size={18} style={{ transform: "rotate(180deg)" }} /> <span className="button-label">Install</span>
         </button>
       )}
-      <button className="text-button" onClick={() => newSongAsk()} title="Start a new, empty song">
+      <button className="text-button" onClick={() => void newSongAsk()} title="Start a new, empty song (the one open is kept in Recent)">
         <Icons.New size={18} /> <span className="button-label">New</span>
       </button>
+      <RecentMenu />
       <button className="text-button" onClick={() => void openFromFile()} title={`Open a .juradaw song (${shortcut(platform, "O")}). You can also drag a file onto the window.`}>
         <Icons.Open size={18} /> <span className="button-label">Open</span>
       </button>

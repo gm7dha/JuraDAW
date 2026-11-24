@@ -18,6 +18,7 @@ import { hasUnsavedChanges, useStore } from "../model/store";
 import { MOST_TRACKS, type Song, type Track } from "../model/types";
 import { downloadFile, safeFileName } from "./download";
 import { forgetUnusedSounds, soundsChanged } from "./engineApp";
+import { beforeOtherSong } from "./recentApp";
 
 // The File System Access API isn't in TypeScript's built-in types yet.
 interface WritableFile {
@@ -192,7 +193,8 @@ export async function openFile(file: File): Promise<boolean> {
     return false;
   }
   // The song that's open has changes that are in no file: ask before it's replaced (Undo can't bring it back).
-  if (hasUnsavedChanges(useStore.getState()) && !window.confirm(`Open ${file.name}? The song you have open has changes that aren't saved to a file yet — they'd be lost.`)) return false;
+  if (hasUnsavedChanges(useStore.getState()) && !window.confirm(`Open ${file.name}? The song you have open has changes that aren't saved to a file yet. (It's kept in Recent, so you can open it again from there.)`)) return false;
+  await beforeOtherSong();
   const song = result.song.name === "Untitled song" ? { ...result.song, name: nameFromFileName(file.name) || result.song.name } : result.song;
   // The sounds first, so the song plays as soon as it's in.
   const engine = getEngine();
@@ -318,9 +320,10 @@ export async function importMidi(file: File): Promise<boolean> {
 }
 
 /** New: an empty song. Asks first only if there are changes not yet saved to a file. */
-export function newSongAsk(): void {
+export async function newSongAsk(): Promise<void> {
   const s = useStore.getState();
-  if (hasUnsavedChanges(s) && !window.confirm("Start a new, empty song? This one has changes that aren't saved to a file yet — they'd be lost.")) return;
+  if (hasUnsavedChanges(s) && !window.confirm("Start a new, empty song? This one has changes that aren't saved to a file yet. (It's kept in Recent, so you can open it again from there.)")) return;
+  await beforeOtherSong();
   if (getEngine().state().playing || s.recording) getEngine().stop();
   s.newSong();
   currentHandle = null;

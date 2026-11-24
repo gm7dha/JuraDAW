@@ -93,5 +93,6 @@ files when you Save.
   a band filter and a filter wobble in time with the song.
 - **v0.7** — named sections along the ruler, the song's key (shading in the note editor) and chords drawn from it,
   finishing touches on the whole song.
-- **Later** — recent songs, more effects (EQ, compressor), tempo changes, time-stretching
+- **v0.8** — recent songs (with their recordings kept in the browser), loop a section.
+- **Later** — more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

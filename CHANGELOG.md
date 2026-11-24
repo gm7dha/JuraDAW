@@ -6,6 +6,13 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.8 — Recent songs
+
+- **Recent**: a new button in the top bar lists the last 12 songs you've worked on in this browser, newest first,
+  each with a little picture of its tracks. Click one to open it again; × forgets it. The song you have open is kept
+  there as you work, so pressing New or opening a file never loses it — and its recordings are kept with it.
+- **Loop this section**: right-click a section on the ruler to loop just that part of the song while you work on it.
+
 ## v0.7 — Sections, the song's key and chords, finishing touches
 
 - **Sections**: name the parts of your song — Intro, Verse, Chorus, Bridge, Outro — along the bottom of the bar

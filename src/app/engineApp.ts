@@ -11,6 +11,7 @@ import { useSyncExternalStore } from "react";
 
 import { getEngine } from "../audio/engine";
 import { useStore } from "../model/store";
+import { soundsOfRecent } from "./recentApp";
 import type { Song, Track } from "../model/types";
 import { midiWanted, setMidiWanted } from "./prefs";
 
@@ -228,8 +229,12 @@ export function forgetUnusedSounds(): void {
   const { past, present, future } = useStore.getState().history;
   const keep = new Set<string>();
   for (const song of [...past, present, ...future]) for (const a of song.audio) keep.add(a.id);
-  void getEngine()
-    .forgetAudio([...keep])
+  // The sounds of the songs in Recent are kept too, so they open with their recordings.
+  void soundsOfRecent()
+    .then((ids) => {
+      for (const id of ids) keep.add(id);
+      return getEngine().forgetAudio([...keep]);
+    })
     .catch(() => {
       // They're only taking up room; nothing is lost.
     });
