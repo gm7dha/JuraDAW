@@ -12,6 +12,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 
 import { useStore } from "../model/store";
 import { AUTO_PARAMS } from "../model/automation";
+import * as edits from "../model/edits";
+import { nextSectionName } from "../model/songParts";
 import type { AutoPoint, Clip, Song, Track } from "../model/types";
 import { addTrackOf, NEW_TRACKS } from "./addTracks";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
@@ -26,7 +28,9 @@ import { gridFor, useZoom, visibleBeats } from "./zoom";
 
 /** Width of the track headers, height of the ruler and of a track's row, in pixels. */
 export const HEADER_W = 212;
-const RULER_H = 40;
+const RULER_H = 58;
+/** The strip along the bottom of the ruler where the song's sections (Intro, Verse, Chorus…) are named. */
+const SECTION_H = 18;
 const LOOP_H = 18;
 const ROW_H = 72;
 const MIN_PPB = 2;
@@ -74,6 +78,8 @@ function Timeline() {
   const [renaming, setRenaming] = useState<string | null>(null);
   /** The clip whose name is being typed on the clip itself (from its right-click menu). */
   const [renamingClip, setRenamingClip] = useState<string | null>(null);
+  /** The section (by its beat) whose name is being typed on the ruler. */
+  const [renamingSection, setRenamingSection] = useState<number | null>(null);
 
   const zoomBy = useZoom({ scroll, ppb, setPpb, left: HEADER_W, min: MIN_PPB, max: MAX_PPB });
   const ppbRef = useRef(ppb);
@@ -229,6 +235,51 @@ function Timeline() {
       const s = useStore.getState();
       s.setLoop({ on: !s.history.present.loop.on });
     }
+  };
+
+  // ── sections: named parts of the song along the bottom of the ruler ──
+
+  /** Name a part of the song from the bar at or before a beat (or rename the one already starting there). */
+  const addSection = (beat: number) => {
+    const s = useStore.getState();
+    const now = s.history.present;
+    const at = Math.max(0, Math.floor(beat / beatsPerBar + 1e-9) * beatsPerBar);
+    const sections = now.sections ?? [];
+    if (!sections.some((x) => Math.abs(x.beat - at) < 1e-6)) s.commit(edits.setSections(now, [...sections, { beat: at, name: nextSectionName(sections, at) }]));
+    setRenamingSection(at);
+  };
+  const renameSection = (beat: number, name: string) => {
+    setRenamingSection(null);
+    const s = useStore.getState();
+    const now = s.history.present;
+    const clean = name.trim();
+    if (!clean) return;
+    s.commit(edits.setSections(now, (now.sections ?? []).map((x) => (Math.abs(x.beat - beat) < 1e-6 ? { ...x, name: clean } : x))));
+  };
+  const removeSection = (beat: number) => {
+    const s = useStore.getState();
+    const now = s.history.present;
+    s.commit(edits.setSections(now, (now.sections ?? []).filter((x) => Math.abs(x.beat - beat) > 1e-6)));
+  };
+  const rulerMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    const beat = Math.max(0, (e.clientX - r.left) / ppb);
+    const bar = Math.floor(beat / beatsPerBar + 1e-9) + 1;
+    setMenu({ x: e.clientX, y: e.clientY, entries: [{ label: `Name a part of the song from bar ${bar}`, act: () => addSection(beat) }] });
+  };
+  const sectionMenu = (e: React.MouseEvent, beat: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      entries: [
+        { label: "Play from here", act: () => seek(beat) },
+        { label: "Rename", act: () => setRenamingSection(beat) },
+        { label: "Delete the name", act: () => removeSection(beat) },
+      ],
+    });
   };
 
   // ── the lanes: clips, drawing, the rubber band ──
@@ -498,6 +549,9 @@ function Timeline() {
             <span className="ruler-corner-label">
               Tracks <span className="count">{song.tracks.length}</span>
             </span>
+            <button type="button" className="section-add" onClick={() => addSection(useStore.getState().cursor)} title="Name the part of the song where playing starts — Intro, Verse, Chorus… (or right-click the ruler)" style={{ height: SECTION_H - 2 }}>
+              + Section
+            </button>
             <button type="button" className="icon-button small" onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out" title="Zoom out (Ctrl/⌘ + scroll wheel, or pinch)">
               <span className="zoom-sign">−</span>
             </button>
@@ -516,6 +570,7 @@ function Timeline() {
             }}
             onPointerUp={rulerUp}
             onPointerCancel={rulerUp}
+            onContextMenu={rulerMenu}
             aria-label="Bar ruler: click to choose where playing starts"
           >
             <div className="loop-lane" style={{ height: LOOP_H }} title="Drag across here to choose the bars that repeat; click to turn the loop on or off (L)" />
@@ -532,10 +587,48 @@ function Timeline() {
               )}
             </div>
             {bars.map((b) => (
-              <span key={b.bar} className="ruler-bar" style={{ left: b.x }}>
+              <span key={b.bar} className="ruler-bar" style={{ left: b.x, bottom: SECTION_H }}>
                 {b.bar}
               </span>
             ))}
+            <div className="section-lane" style={{ height: SECTION_H }}>
+              {(song.sections ?? []).map((sec, i, all) => {
+                const end = all[i + 1]?.beat ?? Math.max(songBeats(song), sec.beat + beatsPerBar * 4);
+                const style = { left: sec.beat * ppb, width: Math.max(14, (end - sec.beat) * ppb - 2) };
+                return renamingSection !== null && Math.abs(renamingSection - sec.beat) < 1e-6 ? (
+                  <input
+                    key={sec.beat}
+                    className="section-name-box"
+                    style={{ ...style, width: Math.max(110, style.width) }}
+                    defaultValue={sec.name}
+                    aria-label="The section's name"
+                    autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onBlur={(e) => renameSection(sec.beat, e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setRenamingSection(null);
+                      e.stopPropagation();
+                    }}
+                  />
+                ) : (
+                  <button
+                    key={sec.beat}
+                    type="button"
+                    className="section-flag"
+                    style={style}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => seek(sec.beat)}
+                    onDoubleClick={() => setRenamingSection(sec.beat)}
+                    onContextMenu={(e) => sectionMenu(e, sec.beat)}
+                    title={`${sec.name} — from bar ${barBeat(sec.beat, beatsPerBar).text}. Click to play from here, double-click to rename, right-click for more`}
+                  >
+                    {sec.name}
+                  </button>
+                );
+              })}
+            </div>
             <div className={`playhead-top${recording ? " recording" : ""}`} ref={playheadTop} />
           </div>
         </div>

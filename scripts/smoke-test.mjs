@@ -185,6 +185,9 @@ const choose = async (click, file) => {
 const closeToasts = async () => {
   while ((await page.locator(".toast button").count()) > 0) await page.locator(".toast button").first().click();
 };
+/** The same data, whatever order each object's fields are in. */
+const sorted = (v) => (Array.isArray(v) ? v.map(sorted) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
+const sameData = (a, b) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
 const toolbarButton = (label) => page.locator(`.toolbar [aria-label="${label}"]`);
 const topButton = (label) => page.locator(`.topbar button:has-text("${label}")`);
 
@@ -404,6 +407,60 @@ try {
   await page.locator('.check-row:has-text("Harmoniser") input').click();
   await until("!s.history.present.tracks[0].harmony", "the harmoniser off again");
 
+  begin("sections on the ruler, the song's key and chords in the editor, finishing touches");
+  await closeToasts();
+  await scrollHome();
+  await page.click(".section-add");
+  await page.waitForSelector(".section-name-box");
+  await page.keyboard.type("Opening");
+  await page.keyboard.press("Enter");
+  await until('s.history.present.sections?.length === 1 && s.history.present.sections[0].name === "Opening"', "a section named on the ruler");
+  {
+    const [x, y] = await rulerPoint(16.5);
+    await page.mouse.click(x, y, { button: "right" });
+    await page.click(".bed-menu button:has-text('Name a part of the song from bar 5')");
+    await page.waitForSelector(".section-name-box");
+    await page.keyboard.press("Enter");
+    await until('s.history.present.sections?.length === 2 && s.history.present.sections[1].beat === 16 && s.history.present.sections[1].name === "Verse"', "a second section from bar 5, offered the name Verse");
+    await page.click('.section-flag:has-text("Verse")');
+    await until("s.cursor === 16", "a click on a section playing from its start");
+    await page.locator('.section-flag:has-text("Verse")').click({ button: "right" });
+    await page.click(".bed-menu button:has-text('Delete the name')");
+    await until("s.history.present.sections?.length === 1", "a section's name taken away");
+  }
+  {
+    const clipId = await get(`s.history.present.clips.find((c) => c.trackId === "${pianoId}" && c.kind === "midi").id`);
+    await page.evaluate((id) => window.juradawStore.getState().editClip(id), clipId);
+    await page.waitForSelector('.roll-bar select[aria-label="The song\'s key"]');
+    await page.selectOption('.roll-bar select[aria-label="The song\'s key"]', "9-minor");
+    await until('s.history.present.key?.note === 9 && s.history.present.key?.scale === "minor"', "the song's key set to A minor");
+    expect((await page.locator(".roll-off-key").count()) > 20, "the notes outside the key shaded in the editor");
+    const before = (await song()).clips.find((c) => c.id === clipId).notes.length;
+    const steps = await get("s.history.past.length");
+    await page.click('.roll-bar button:has-text("Chords")');
+    const grid = await page.locator(".roll-grid").boundingBox();
+    const view = await page.locator(".roll-scroll").boundingBox();
+    await page.mouse.dblclick(grid.x + 30, view.y + view.height * 0.5);
+    await until(`s.history.present.clips.find((c) => c.id === "${clipId}").notes.length === ${before + 3}`, "a double-click adding a whole chord");
+    const notes = (await song()).clips.find((c) => c.id === clipId).notes.slice(-3);
+    const inKey = (p) => [0, 2, 3, 5, 7, 8, 10].includes((((p - 9) % 12) + 12) % 12);
+    expect(notes.every((n) => n.start === notes[0].start && inKey(n.pitch)), `the chord's three notes together and in A minor (${notes.map((n) => n.pitch)})`);
+    expect((await get("s.history.past.length")) === steps + 1, "the chord one undo step");
+    await page.keyboard.press("Control+z");
+    await until(`s.history.present.clips.find((c) => c.id === "${clipId}").notes.length === ${before}`, "undo taking the chord away");
+    await page.click('.roll-bar button:has-text("Chords")');
+  }
+  await page.evaluate(() => {
+    const s = window.juradawStore.getState();
+    s.selectClips([]);
+    s.selectTrack(null);
+  });
+  await page.locator('.side-panel input[aria-label="Song squeeze"]').fill("0.3");
+  await until("s.history.present.finish?.squeeze === 0.3", "the song's squeeze turned up in the song's settings");
+  await page.locator('.side-panel input[aria-label="Song squeeze"]').fill("0");
+  await until("!s.history.present.finish", "and off again");
+  expect((await page.locator('.side-panel select[aria-label="The song\'s key"]').inputValue()) === "9-minor", "the key shown in the song's settings");
+
   begin("record notes with the typing keyboard");
   await closeToasts();
   await scrollHome();
@@ -542,7 +599,7 @@ try {
   await (await again).accept();
   await until("s.history.present.bpm !== 97 && s.history.past.length === 0", "the dropped song to open after a yes");
   await closeToasts();
-  expect(JSON.stringify(after) === JSON.stringify(before), "the opened song the same as the one saved");
+  expect(sameData(after, before), "the opened song the same as the one saved");
   expect((await get("s.fileName")) === "Smoke tune.juradaw" && (await get("s.history.past.length")) === 0, "its file name kept, and a fresh undo history");
 
   begin("import a sound file as a clip");

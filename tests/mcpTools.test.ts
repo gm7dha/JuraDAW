@@ -327,3 +327,22 @@ describe("files", () => {
     expect(s.song).toBe(before);
   });
 });
+
+describe("the song's key, sections and finishing touches", () => {
+  it("are set, described and taken off", async () => {
+    const { s } = session();
+    const said = await ok(s, "set_song", { key: "Eb minor", sections: [{ bar: 1, name: "Intro" }, { bar: 5, name: "Verse" }], finish: { bass: 20, squeeze: 30 } });
+    expect(s.song.key).toEqual({ note: 3, scale: "minor" });
+    expect(s.song.sections).toEqual([{ beat: 0, name: "Intro" }, { beat: 16, name: "Verse" }]);
+    expect(s.song.finish).toEqual({ lows: 0.2, squeeze: 0.3 });
+    expect(said).toMatch(/Key: Eb minor/);
+    expect(said).toMatch(/Sections: Intro \(bar 1\), Verse \(bar 5\)/);
+    expect(said).toMatch(/Finishing touches: bass 20, squeeze 30%/);
+    await ok(s, "set_song", { key: "F#" });
+    expect(s.song.key).toEqual({ note: 6, scale: "major" });
+    expect(await bad(s, "set_song", { key: "H major" })).toMatch(/isn't a key/);
+    expect(await bad(s, "set_song", { sections: [{ bar: 2, name: "A" }, { bar: 2, name: "B" }] })).toMatch(/same bar/);
+    await ok(s, "set_song", { key: null, sections: null, finish: { bass: 0, squeeze: 0 } });
+    expect("key" in s.song || "sections" in s.song || "finish" in s.song).toBe(false);
+  });
+});

@@ -16,6 +16,7 @@
  */
 import { CHOP_OPEN_SHARE, HARMONY_STYLES, HIGHS_HZ, LOWS_HZ, PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, TONE_DB, chopFloor, cutoffHz, effectsOf, filterIsOn, harmonySteps, stepRatio, pumpFloor, sweepAt, trackHasSweeps, wobbledCutoff, type TrackEffects } from "../model/shaping";
 import { lineBetween, lineOf, valueAt, volumeValueGain } from "../model/automation";
+import { finishOf } from "../model/songParts";
 import type { AutoPoint, Clip, Harmony, Song, Track } from "../model/types";
 import { audibleTracks } from "./schedule";
 import { beatsToSeconds, clamp, seededRandom } from "./shared";
@@ -143,6 +144,18 @@ const SWIRL_HZ = 900;
 const SWIRL_REACH = 700;
 const SWIRL_RATE = 0.3;
 
+/**
+ * How much the browser's compressor turns its own result back up (dB): Chrome lifts by 0.6 of what a full-scale sound
+ * would lose, about (−threshold)·(1 − 1/ratio). The song's squeeze takes that back and keeps a small, steady lift of its own.
+ */
+export function compressorLiftDb(threshold: number, ratio: number): number {
+  return 0.6 * -threshold * (1 - 1 / ratio);
+}
+/** The small lift the song's squeeze keeps at full (dB). */
+const FINISH_SQUEEZE_LIFT_DB = 2;
+/** At a song's usual level the compressor squeezes some of its own lift away again: what's left was measured at about this (dB). */
+const FINISH_SQUEEZE_MOST_LIFT_DB = 6.5;
+
 /** Squeeze's settings for an amount 0–1: where it starts to act (dB), how hard, and a little more turned back up (dB) — the browser's compressor already makes up most of what it takes away. */
 export function squeezeSettings(amount: number): { threshold: number; ratio: number; makeUp: number } {
   const a = clamp(amount, 0, 1);
@@ -263,6 +276,11 @@ export class Mixer {
   private readonly strips = new Map<string, Strip>();
   private readonly mix: GainNode;
   private readonly master: GainNode;
+  /** The song's finishing touches, before the master volume: bass and treble shelves, then a squeeze (made when first turned up). */
+  private readonly finishLows: BiquadFilterNode;
+  private readonly finishHighs: BiquadFilterNode;
+  private readonly finishPlain: GainNode;
+  private finishSqueeze: { compressor: DynamicsCompressorNode; makeUp: GainNode } | null = null;
   private readonly limiter: DynamicsCompressorNode;
   private readonly trim: GainNode;
   private readonly reverbIn: GainNode;
@@ -301,7 +319,17 @@ export class Mixer {
     const top = ctx.createWaveShaper();
     // An odd number of points puts silence exactly on a point; the straight part of the table is exact in between.
     top.curve = ceilingCurve(16385);
-    this.mix.connect(this.master).connect(this.limiter).connect(this.trim).connect(intoCeiling).connect(top).connect(destination);
+    this.finishLows = ctx.createBiquadFilter();
+    this.finishLows.type = "lowshelf";
+    this.finishLows.frequency.value = LOWS_HZ;
+    this.finishLows.gain.value = 0;
+    this.finishHighs = ctx.createBiquadFilter();
+    this.finishHighs.type = "highshelf";
+    this.finishHighs.frequency.value = HIGHS_HZ;
+    this.finishHighs.gain.value = 0;
+    this.finishPlain = ctx.createGain();
+    this.mix.connect(this.finishLows).connect(this.finishHighs).connect(this.finishPlain).connect(this.master);
+    this.master.connect(this.limiter).connect(this.trim).connect(intoCeiling).connect(top).connect(destination);
 
     this.clickInput = ctx.createGain();
     this.clickInput.connect(destination);
@@ -699,6 +727,30 @@ export class Mixer {
     }
     const first = this.bpm === 0;
     this.set(this.master.gain, volumeToGain(song.master), first);
+    // The finishing touches: half the tone a track's own Bass and Treble give, as the whole song is a big thing to tilt.
+    const finish = finishOf(song.finish);
+    this.set(this.finishLows.gain, (finish.lows * TONE_DB) / 2, first);
+    this.set(this.finishHighs.gain, (finish.highs * TONE_DB) / 2, first);
+    if (finish.squeeze > 0 && !this.finishSqueeze) {
+      const compressor = this.ctx.createDynamicsCompressor();
+      compressor.knee.value = 10;
+      compressor.attack.value = 0.01;
+      compressor.release.value = 0.25;
+      const makeUp = this.ctx.createGain();
+      makeUp.gain.value = 0;
+      this.finishHighs.connect(compressor).connect(makeUp).connect(this.master);
+      this.finishSqueeze = { compressor, makeUp };
+    }
+    if (this.finishSqueeze) {
+      // Gentler than a track's Squeeze: glue for the whole song, not an effect.
+      const q = squeezeSettings(finish.squeeze * 0.6);
+      this.set(this.finishSqueeze.compressor.threshold, q.threshold, first);
+      this.set(this.finishSqueeze.compressor.ratio, q.ratio, first);
+      // The browser's compressor turns its own result back up as if the sound were loud; the mix is quieter than that here, so most of it is taken back.
+      const trim = FINISH_SQUEEZE_LIFT_DB * finish.squeeze - Math.min(compressorLiftDb(q.threshold, q.ratio), FINISH_SQUEEZE_MOST_LIFT_DB);
+      this.set(this.finishSqueeze.makeUp.gain, finish.squeeze > 0 ? Math.pow(10, trim / 20) : 0, first);
+    }
+    this.set(this.finishPlain.gain, finish.squeeze > 0 ? 0 : 1, first);
     if (song.bpm !== this.bpm) {
       this.bpm = song.bpm;
       // Eased a little more slowly: a delay that jumps makes a zip noise.

@@ -4,6 +4,7 @@
  * clips and notes that weren't touched are the very same objects in both
  * songs (see edits.ts), so only the changed ones are looked at.
  */
+import { keyWords } from "./songParts";
 import { instrumentLabel } from "./document";
 import type { Clip, MidiClip, Note, Song, Track } from "./types";
 
@@ -166,6 +167,15 @@ export function changeLabel(before: Song, after: Song): string {
   if (before.bpm !== after.bpm) return `Changed the tempo to ${Math.round(after.bpm * 100) / 100}`;
   if (before.beatsPerBar !== after.beatsPerBar) return `Changed to ${after.beatsPerBar} beats in a bar`;
   if (before.master !== after.master) return "Changed the master volume";
+  if (before.key !== after.key) return after.key ? `Set the key to ${keyWords(after.key)}` : "Took the key off";
+  if (before.sections !== after.sections) {
+    const was = before.sections?.length ?? 0;
+    const now = after.sections?.length ?? 0;
+    if (now > was) return `Added the section ${quoted(after.sections!.find((s) => !before.sections?.some((b) => b.beat === s.beat))?.name ?? "")}`;
+    if (now < was) return "Took a section away";
+    return "Changed a section";
+  }
+  if (before.finish !== after.finish) return "Changed the finishing touches";
   if (before.loop.on !== after.loop.on) return after.loop.on ? "Turned the loop on" : "Turned the loop off";
   if (before.loop.start !== after.loop.start || before.loop.end !== after.loop.end) return "Changed the loop";
   if (!before.tracks.length && !after.tracks.length) return "Started a new song";

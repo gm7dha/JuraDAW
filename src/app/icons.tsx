@@ -229,6 +229,15 @@ export const Icons = {
       <path d="M4 9h4M10 15h4M16 7.5h4" strokeWidth={2.6} />
     </Svg>
   ),
+  /** Chords: three notes stacked. */
+  Chord: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M4 6h16M4 12h16M4 18h16" opacity="0.35" />
+      <ellipse cx="9" cy="18" rx="3" ry="2.2" fill="currentColor" stroke="none" />
+      <ellipse cx="9" cy="12" rx="3" ry="2.2" fill="currentColor" stroke="none" />
+      <ellipse cx="15" cy="6" rx="3" ry="2.2" fill="currentColor" stroke="none" />
+    </Svg>
+  ),
   /** Automation: a line with points on it. */
   Automation: (p: IconProps) => (
     <Svg {...p}>

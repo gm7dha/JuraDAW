@@ -7,7 +7,7 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.6 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> **Status: v0.7 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
 > export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today
@@ -25,7 +25,9 @@ it's free.
   its own.
 - **The note editor** (a piano roll) along the bottom: double-click a clip to see its notes, draw new ones, drag them
   about, change how long and how hard each is played, move them up or down an octave, and **Tidy timing** to put them
-  exactly on the grid. Drum tracks list the drums by name.
+  exactly on the grid. Choose the song's **key** and the notes outside it are shaded; press **Chords** and each note
+  you add becomes a chord that fits the key. Drum tracks list the drums by name.
+- **Sections**: name the parts of the song (Intro, Verse, Chorus…) along the ruler, and click one to play from it.
 - **Keys**: an on-screen piano (drum pads for a drum kit) to play with the mouse, your fingers, or the computer's
   keyboard — tick *Play with the computer keyboard* and A W S E D F T G Y H U J K become a piano. A plug-in
   **MIDI keyboard** (Chrome, Edge and other browsers with Web MIDI) is connected with *Connect a MIDI keyboard*, in

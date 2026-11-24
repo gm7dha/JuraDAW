@@ -5,6 +5,7 @@
  * the browser.
  */
 import { cleanAutomation } from "./automation";
+import { cleanFinish, cleanKey, cleanSections } from "./songParts";
 import { cleanArp, cleanFilterWobble, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, TRACK_COLOURS } from "./types";
 import type { AudioClip, AudioInfo, Clip, Loop, MidiClip, Note, Song, Track, TrackKind } from "./types";
@@ -358,7 +359,20 @@ export function parseSong(raw: unknown): Song | null {
     tracks,
     clips,
     audio: audio.filter((a) => used.has(a.id)),
+    ...songExtras(s),
   };
+}
+
+/** The song's key, sections and finishing touches from a file (each left out when there's none). */
+function songExtras(s: Record<string, unknown>): Pick<Song, "key" | "sections" | "finish"> {
+  const out: Pick<Song, "key" | "sections" | "finish"> = {};
+  const key = cleanKey(s.key);
+  if (key) out.key = key;
+  const sections = cleanSections(s.sections);
+  if (sections.length) out.sections = sections;
+  const finish = cleanFinish(s.finish);
+  if (finish) out.finish = finish;
+  return out;
 }
 
 // ---------------------------------------------------------------------------

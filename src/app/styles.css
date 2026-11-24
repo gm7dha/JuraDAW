@@ -3430,3 +3430,76 @@ button.display-button {
   opacity: 0.75;
   vector-effect: non-scaling-stroke;
 }
+
+/* The note editor with a key chosen: rows of notes outside the key are shaded more deeply. */
+.roll-off-key {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: var(--ink);
+  opacity: 0.11;
+  pointer-events: none;
+}
+
+.roll-bar select {
+  max-width: 150px;
+  font-size: 12px;
+}
+
+/* The song's sections (Intro, Verse, Chorus…) along the bottom of the ruler. */
+.section-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid var(--line);
+  background: var(--subtle);
+}
+
+.section-flag,
+.section-name-box {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  margin-left: 1px;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 14px;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.section-name-box {
+  z-index: 2;
+  cursor: text;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.section-add {
+  align-self: flex-end;
+  margin-bottom: 1px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.section-add:hover {
+  color: var(--accent-dark);
+  border-color: var(--accent-line);
+}

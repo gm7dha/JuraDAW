@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { instrumentById } from "../audio/instruments";
+import * as edits from "../model/edits";
+import { ALL_KEYS, chordAt, keyWords, pitchInKey } from "../model/songParts";
 import { useStore } from "../model/store";
 import { DRUM_PITCHES, isBlackKey, pitchName } from "../model/time";
 import { MIN_LENGTH, type MidiClip, type Note, type Song, type Track } from "../model/types";
@@ -73,8 +75,48 @@ interface RollProps {
   snap: ReturnType<typeof useStore.getState>["snap"];
 }
 
+/** Whether each note added in the editor is a whole chord (kept while the page is open). */
+let chordsOn = false;
+
+/** The song's key, chosen in the note editor (and in the song's settings): the notes outside it are shaded. */
+export function KeyPicker({ song, label = false }: { song: Song; label?: boolean }) {
+  const value = song.key ? `${song.key.note}-${song.key.scale}` : "";
+  const select = (
+    <select
+      value={value}
+      aria-label="The song's key"
+      title="The song's key: the notes outside it are shaded in the note editor, and Chords draws chords that fit it"
+      onChange={(e) => {
+        const st = useStore.getState();
+        const [note, scale] = e.target.value.split("-");
+        st.commit(edits.setKey(st.history.present, e.target.value ? { note: Number(note), scale: scale === "minor" ? "minor" : "major" } : null));
+      }}
+    >
+      <option value="">{label ? "Not chosen" : "Key: none"}</option>
+      {ALL_KEYS.map((k) => (
+        <option key={`${k.note}-${k.scale}`} value={`${k.note}-${k.scale}`}>
+          {label ? keyWords(k) : `Key: ${keyWords(k)}`}
+        </option>
+      ))}
+    </select>
+  );
+  return label ? (
+    <label className="field">
+      <span>Key</span>
+      {select}
+    </label>
+  ) : (
+    select
+  );
+}
+
 function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
   const drums = instrumentById(track.instrument).kind === "drums";
+  const [chords, setChordsState] = useState(chordsOn);
+  const setChords = (on: boolean) => {
+    chordsOn = on;
+    setChordsState(on);
+  };
   /** The rows from the top down: each is a pitch. */
   const rows = useMemo(() => {
     if (!drums) return Array.from({ length: HIGH - LOW + 1 }, (_, i) => ({ pitch: HIGH - i, name: pitchName(HIGH - i) }));
@@ -167,11 +209,23 @@ function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
   const draw = (e: ReactPointerEvent<HTMLDivElement>, p: ReturnType<typeof place>) => {
     const start = snapNote(p.beat, e.shiftKey, true);
     const length = drums ? step : (lastLength ?? step);
-    const id = s().addNote(clip.id, { pitch: p.pitch, start, length, velocity: 100 });
-    hear(track.id, p.pitch, 100);
-    if (drums) return;
+    let ids: string[];
+    if (chords && !drums) {
+      const st = s();
+      const pitches = chordAt(p.pitch, st.history.present.key).filter((pitch) => pitch <= 127);
+      const added = edits.addNotes(st.history.present, clip.id, pitches.map((pitch) => ({ pitch, start, length, velocity: 100 })));
+      if (!added) return;
+      st.commit(added.song);
+      st.selectNotes(added.ids);
+      pitches.forEach((pitch) => hear(track.id, pitch, 90));
+      ids = added.ids;
+    } else {
+      ids = [s().addNote(clip.id, { pitch: p.pitch, start, length, velocity: 100 })];
+      hear(track.id, p.pitch, 100);
+    }
+    if (drums || !ids[0]) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { kind: "length", ids: [id], base: s().history.present, beat0: p.beat, x0: e.clientX, moved: false };
+    drag.current = { kind: "length", ids, base: s().history.present, beat0: p.beat, x0: e.clientX, moved: false };
   };
 
   const gridDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -334,7 +388,18 @@ function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
     }
     const p = place(e);
     const start = snapNote(p.beat, e.shiftKey, true);
-    st.addNote(clip.id, { pitch: p.pitch, start, length: drums ? step : (lastLength ?? step), velocity: 100 });
+    const length = drums ? step : (lastLength ?? step);
+    if (chords && !drums) {
+      // A whole chord in one go (one undo step): the key's own chord on the note clicked, or a major chord with no key.
+      const pitches = chordAt(p.pitch, st.history.present.key).filter((pitch) => pitch <= 127);
+      const added = edits.addNotes(st.history.present, clip.id, pitches.map((pitch) => ({ pitch, start, length, velocity: 100 })));
+      if (!added) return;
+      st.commit(added.song);
+      st.selectNotes(added.ids);
+      pitches.forEach((pitch) => hear(track.id, pitch, 90));
+      return;
+    }
+    st.addNote(clip.id, { pitch: p.pitch, start, length, velocity: 100 });
     hear(track.id, p.pitch, 100);
   };
 
@@ -414,7 +479,21 @@ function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
           </span>
         </span>
         <span className="roll-spring" />
-        <span className="muted small roll-hint">{tool === "pencil" ? "Click to add a note" : "Double-click to add a note"}</span>
+        <span className="muted small roll-hint">{tool === "pencil" ? `Click to add ${chords && !drums ? "a chord" : "a note"}` : `Double-click to add ${chords && !drums ? "a chord" : "a note"}`}</span>
+        {!drums && (
+          <>
+            <KeyPicker song={song} />
+            <button
+              type="button"
+              className={`text-button small-button${chords ? " active" : ""}`}
+              aria-pressed={chords}
+              onClick={() => setChords(!chords)}
+              title={song.key ? `Chords: each note you add becomes a whole chord of ${keyWords(song.key)}` : "Chords: each note you add becomes a whole (major) chord — choose the song's key for chords that fit it"}
+            >
+              <Icons.Chord size={16} /> Chords
+            </button>
+          </>
+        )}
         <button type="button" className="text-button small-button" onClick={() => s().quantise(step)} disabled={!clip.notes.length} title="Tidy timing: move the selected notes (or all of them) onto the snap grid, so they're exactly in time">
           <Icons.Tidy size={16} /> Tidy timing
         </button>
@@ -488,6 +567,7 @@ function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
               onContextMenu={gridMenu}
             >
               {!drums && <div className="roll-rows" />}
+              {!drums && song.key && rows.map((r, i) => (pitchInKey(r.pitch, song.key!) ? null : <div key={r.pitch} className="roll-off-key" style={{ top: i * rowH, height: rowH }} />))}
               <div className="roll-lines" />
               <div className="roll-past" style={{ left: clip.length * ppb }} />
               {clip.notes.map((n) => {
