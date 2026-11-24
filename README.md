@@ -7,7 +7,7 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.5 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> **Status: v0.6 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
 > export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today
@@ -15,8 +15,9 @@ it's free.
 - **Tracks**: up to 32, each an instrument to play or a track for recorded sound, with its own colour, volume,
   left–right, Mute and Solo. An empty song offers three ways to begin: play an instrument, make a drum beat, or record
   sound.
-- **Built-in instruments**, made in the browser so nothing has to download: piano, electric piano, organ, strings, a
-  soft pad, bass guitar, synth bass, synth lead, pluck, bells, and a drum kit of thirteen drums and cymbals.
+- **Built-in instruments**, made in the browser so nothing has to download: pianos, organ, strings, pads and a choir,
+  acoustic guitar, harp, kalimba, marimba, flute and brass, five basses, synths, bells and a noise sweep, and three
+  drum kits (an ordinary kit, an 808 kit and an electronic kit).
 - **Clips** on a timeline of bars and beats: drag to move them (they snap to the grid; hold Shift not to), drag an
   edge to make them longer or shorter, split with the Scissors, join, repeat, duplicate, copy and paste, rename. A
   **right-click menu** has the lot. Drag something to the edge of the view and the view scrolls along. Nothing is put
@@ -35,7 +36,9 @@ it's free.
   stretch it or its middle to slide it along.
 - **The mixer**: every track side by side with its fader, level meter, left–right, **reverb** and **echo**, and a
   Master strip.
-- **Shaping the sound**: each track's own effects (drive, crush, a filter, wobble, pump, bass and treble, chop), an
+- **Shaping the sound**: each track's own effects (drive, crush, a filter that can cut the top or the bottom or keep
+  the middle, a filter wobble in time with the song, wobble, pump, bass and treble, chop, swirl, squeeze, sway and
+  swing), an
   **arpeggiator** and a **harmoniser** (extra voices an octave below, a fifth above or in a chord); each clip's own
   volume, fades and filter sweep; and **automation** — lines drawn over the song that move a track's volume, filter
   or left–right as it plays.

@@ -10,10 +10,10 @@
  */
 import { MIN_SECONDS, MOST_BEATS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
 import { cleanPoints } from "./automation";
-import { DEFAULT_ARP, cleanArp, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
+import { DEFAULT_ARP, cleanArp, cleanFilterWobble, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { EPS, beatsToSeconds, clipEnd, r6, secondsToBeats } from "./time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "./types";
-import type { Arp, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
+import type { Arp, FilterWobble, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -141,7 +141,7 @@ export function duplicateTrack(song: Song, id: string): { song: Song; id: string
   return { song: { ...song, tracks, clips: [...song.clips, ...clips] }, id: copy.id };
 }
 
-export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null };
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony" | "filterWobble">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null; filterWobble?: Partial<FilterWobble> | null };
 
 /**
  * A track's settings changed, each kept inside its limits (blank names and unusable values are ignored; audio
@@ -161,7 +161,7 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
   if (finite(patch.reverb)) next.reverb = clamp(patch.reverb, 0, 1);
   if (finite(patch.echo)) next.echo = clamp(patch.echo, 0, 1);
   // The track's own effects: an effect turned right down is left out of the track altogether.
-  for (const key of ["drive", "crush", "chorus", "pump", "chop"] as const) {
+  for (const key of ["drive", "crush", "chorus", "pump", "chop", "squeeze", "sway", "swirl", "swing"] as const) {
     const amount = patch[key];
     if (!finite(amount)) continue;
     if (clamp(amount, 0, 1) > 0) next[key] = clamp(amount, 0, 1);
@@ -179,6 +179,14 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
     const arp = cleanArp({ ...DEFAULT_ARP, ...track.arp, ...patch.arp });
     const was = track.arp;
     if (arp && !(was && was.style === arp.style && was.rate === arp.rate && was.octaves === arp.octaves)) next.arp = arp;
+  }
+  // The filter wobble: settings in part (the rest kept), or null — or a depth of 0 — to switch it off.
+  if (patch.filterWobble === null) delete next.filterWobble;
+  else if (patch.filterWobble) {
+    const wobble = cleanFilterWobble({ rate: 0.5, depth: 0.6, ...track.filterWobble, ...patch.filterWobble });
+    const was = track.filterWobble;
+    if (!wobble) delete next.filterWobble;
+    else if (!(was && was.rate === wobble.rate && was.depth === wobble.depth)) next.filterWobble = wobble;
   }
   // The harmoniser: settings in part (the rest kept), or null — or an amount of 0 — to switch it off.
   if (patch.harmony === null) delete next.harmony;

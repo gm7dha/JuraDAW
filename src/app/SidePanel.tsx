@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { INSTRUMENTS, instrumentById } from "../audio/instruments";
 import { AUTO_NAMES, AUTO_PARAMS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
-import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, HARMONY_STYLES, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
+import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, HARMONY_STYLES, WOBBLE_RATES, wobbleRateWords, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
 import { useStore } from "../model/store";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type HarmonyStyle, type Song, type Track } from "../model/types";
 import { hear, playheadBeat } from "./engineApp";
@@ -246,7 +246,7 @@ function ClipShape({ song, clip }: { song: Song; clip: Clip }) {
 /** The track's own effects, in the order the sound goes through them. */
 function TrackEffects({ track }: { track: Track }) {
   const e = effectsOf(track);
-  const off = e.filter.kind === "low" ? 1 : 0;
+  const off = e.filter.kind === "low" ? 1 : e.filter.kind === "high" ? 0 : 0.5;
   const amount = (v: number) => (v > 0 ? percent(v) : "off");
   return (
     <>
@@ -257,34 +257,86 @@ function TrackEffects({ track }: { track: Track }) {
       <SliderRow label="Crush" words={amount(e.crush)} value={e.crush} usual={0} title="The rough, lo-fi sound of an old sampler or games console (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { crush: v })} />
       <SliderRow label="Bass" words={toneWords(e.lows)} value={e.lows} min={-1} max={1} step={0.05} usual={0} title="More or less of the low end: boom and warmth (double-click for no change)" make={(sg, v) => edits.updateTrack(sg, track.id, { lows: Math.abs(v) < 0.03 ? 0 : v })} />
       <SliderRow label="Treble" words={toneWords(e.highs)} value={e.highs} min={-1} max={1} step={0.05} usual={0} title="More or less of the top end: brightness and air (double-click for no change)" make={(sg, v) => edits.updateTrack(sg, track.id, { highs: Math.abs(v) < 0.03 ? 0 : v })} />
-      <div className="segmented two filter-kind" role="radiogroup" aria-label="What the filter takes away">
-        {(["low", "high"] as const).map((kind) => (
+      <div className="segmented three filter-kind" role="radiogroup" aria-label="What the filter takes away">
+        {(["low", "high", "band"] as const).map((kind) => (
           <button
             key={kind}
             type="button"
             role="radio"
             aria-checked={e.filter.kind === kind}
             className={e.filter.kind === kind ? "selected" : ""}
-            title={kind === "low" ? "The filter takes away the top of the sound: muffled, underwater (a low-pass filter)" : "The filter takes away the bottom of the sound: thin, like a small radio (a high-pass filter)"}
-            onClick={() => useStore.getState().updateTrack(track.id, { filter: { kind, cutoff: kind === "low" ? 1 : 0 } })}
+            title={FILTER_KIND_HINTS[kind]}
+            onClick={() => useStore.getState().updateTrack(track.id, { filter: { kind, cutoff: kind === "low" ? 1 : kind === "high" ? 0 : 0.5 } })}
           >
-            {kind === "low" ? "Cut the top" : "Cut the bottom"}
+            {FILTER_KIND_WORDS[kind]}
           </button>
         ))}
       </div>
       <SliderRow
         label="Filter"
-        words={filterIsOn(e.filter) ? `cuts ${e.filter.kind === "low" ? "above" : "below"} ${hzText(cutoffHz(e.filter.cutoff))}` : "off"}
+        words={e.filter.kind === "band" ? `keeps around ${hzText(cutoffHz(e.filter.cutoff))}` : filterIsOn(e.filter) ? `cuts ${e.filter.kind === "low" ? "above" : "below"} ${hzText(cutoffHz(e.filter.cutoff))}` : "off"}
         value={e.filter.cutoff}
         usual={off}
-        title={`Where the filter cuts: slide ${e.filter.kind === "low" ? "down" : "up"} to take more away (double-click for off)`}
+        title={e.filter.kind === "band" ? "Which slice of the sound is kept: low for a boomy slice, high for a tinny one (double-click for the middle)" : `Where the filter cuts: slide ${e.filter.kind === "low" ? "down" : "up"} to take more away (double-click for off)`}
         make={(sg, v) => edits.updateTrack(sg, track.id, { filter: { cutoff: v } })}
       />
       <SliderRow label="Filter ring" words={amount(e.filter.resonance)} value={e.filter.resonance} usual={0} title="A ringing edge where the filter cuts (resonance): a little adds bite, a lot whistles" make={(sg, v) => edits.updateTrack(sg, track.id, { filter: { resonance: v } })} />
+      <FilterWobbleSettings track={track} />
       <SliderRow label="Wobble" words={amount(e.chorus)} value={e.chorus} usual={0} title="A slow drift in pitch that widens and thickens the sound, like a worn tape (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { chorus: v })} />
       <SliderRow label="Pump" words={amount(e.pump)} value={e.pump} usual={0} title="Dips the volume on every beat and lets it swell back, as dance music does (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { pump: v })} />
       <SliderRow label="Chop" words={amount(e.chop)} value={e.chop} usual={0} title="Cuts the sound into sixteenth notes: a gentle flutter, or hard stutters when turned right up (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { chop: v })} />
+      <SliderRow label="Swirl" words={amount(e.swirl)} value={e.swirl} usual={0} title="A slow, sweeping, hollow whoosh, like a jet passing (a phaser) (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { swirl: v })} />
+      <SliderRow label="Squeeze" words={amount(e.squeeze)} value={e.squeeze} usual={0} title="Evens out the loud and quiet parts so the track sits steady and punchy (a compressor) (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { squeeze: v })} />
+      <SliderRow label="Sway" words={amount(e.sway)} value={e.sway} usual={0} title="The sound swings from left to right and back, in time with the song — try it with headphones (double-click for off)" make={(sg, v) => edits.updateTrack(sg, track.id, { sway: v })} />
+      {track.kind === "instrument" && (
+        <SliderRow label="Swing" words={amount(e.swing)} value={e.swing} usual={0} title="Notes on the off-beats come a little late, for a shuffle or a groove; right up is a full triplet feel (double-click for straight)" make={(sg, v) => edits.updateTrack(sg, track.id, { swing: v })} />
+      )}
       {track.kind === "instrument" && <ArpSettings track={track} />}
+    </>
+  );
+}
+
+const FILTER_KIND_WORDS = { low: "Cut top", high: "Cut bottom", band: "Keep middle" } as const;
+const FILTER_KIND_HINTS = {
+  low: "The filter takes away the top of the sound: muffled, underwater (a low-pass filter)",
+  high: "The filter takes away the bottom of the sound: thin and light (a high-pass filter)",
+  band: "The filter keeps only a slice of the sound: like a telephone or a small radio (a band-pass filter)",
+} as const;
+
+/** The filter wobble: the filter opening and closing in time with the song. */
+function FilterWobbleSettings({ track }: { track: Track }) {
+  const s = useStore.getState;
+  const wobble = track.filterWobble;
+  return (
+    <>
+      <label className="check-row" title="The filter opens and closes in time with the song: the wub-wub of dubstep, or a gentle throb when slow">
+        <input
+          type="checkbox"
+          checked={!!wobble}
+          onChange={(e) => {
+            s().updateTrack(track.id, { filterWobble: e.target.checked ? { rate: 0.5, depth: 0.6 } : null });
+            e.currentTarget.blur();
+          }}
+        />
+        <span>
+          Filter wobble <span className="muted">— opens and closes in time</span>
+        </span>
+      </label>
+      {wobble && (
+        <>
+          <label className="field">
+            <span className="field-label">How often</span>
+            <select value={String(wobble.rate)} onChange={(e) => s().updateTrack(track.id, { filterWobble: { rate: Number(e.target.value) } })} aria-label="How often the filter wobbles">
+              {WOBBLE_RATES.map((rate) => (
+                <option key={rate} value={String(rate)}>
+                  {wobbleRateWords(rate)[0].toUpperCase() + wobbleRateWords(rate).slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SliderRow label="How far" words={percent(wobble.depth)} value={wobble.depth} min={0.05} usual={0.6} title="How far the filter closes on each wobble (double-click for the usual 60%)" make={(sg, v) => edits.updateTrack(sg, track.id, { filterWobble: { depth: v } })} />
+        </>
+      )}
     </>
   );
 }
@@ -304,7 +356,9 @@ function ArpSettings({ track }: { track: Track }) {
             e.currentTarget.blur();
           }}
         />
-        Arpeggiator <span className="muted">— chords one note at a time</span>
+        <span>
+          Arpeggiator <span className="muted">— chords one note at a time</span>
+        </span>
       </label>
       {arp && (
         <>
@@ -358,7 +412,9 @@ function HarmonySettings({ track }: { track: Track }) {
             e.currentTarget.blur();
           }}
         />
-        Harmoniser <span className="muted">— extra voices along with it</span>
+        <span>
+          Harmoniser <span className="muted">— extra voices along with it</span>
+        </span>
       </label>
       {harmony && (
         <>

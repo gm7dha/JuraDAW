@@ -113,6 +113,20 @@
   `HarmonySettings`; add_track/edit_track take `harmoniser` {voices, volume}. Measured in the devkit harness: a line
   fades, opens the filter and pans; each harmony style puts its energy at the right pitches.
 
+- v0.6: six instruments under "Acoustic" (guitar — `pluckBuffer` through two body resonances —, harp, kalimba,
+  marimba, flute, brass; levels measured; MIDI programs both ways, pluck now written as 45). Track `squeeze`, `sway`,
+  `swirl`, `swing` (0–1, left out when off, in `effectsOf`/`TrackEffects`), `filter.kind` "band" (always on,
+  cutoff 0.5 by default, Q at least 1.4) and `filterWobble` {rate in beats from `WOBBLE_RATES`, depth} (`cleanFilterWobble`,
+  `wobbledCutoff` — open on the beat, closing to `depth`·0.8 between —, `wobbleRateWords`). In mixer.ts: squeeze is a
+  lazily made DynamicsCompressor beside a `plain` gain after chop (`squeezeSettings`; Chrome's compressor makes up its
+  own gain, so `makeUp` is small), swirl four LFO-swept allpasses beside the sound from `filter` into `pump`
+  (`makeSwirl`), sway a StereoPanner after the track's panner (identity at 0 for stereo, so old songs are untouched)
+  booked once a bar in `scheduleShaping`, the filter wobble booked with the filter's other movements (sweeps, the
+  line). Swing is in `notesBetween` (`swingDelay`, `swingsInSixteenths`: eighths, or sixteenths when the clip has
+  notes on them). SidePanel: Swirl, Squeeze, Sway, Swing sliders, filter kinds "Cut top / Cut bottom / Keep middle",
+  `FilterWobbleSettings`. Claude: add_track/edit_track take squeeze, sway, swirl, swing, filter_wobble and filter kind
+  "band".
+
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -173,7 +187,7 @@
   edits and tempo changes are heard while it plays and a loop goes round without a gap; stops by itself when the song
   runs out), `schedule.ts` (pure: `notesBetween`, `audioClipsBetween`, `audibleTracks` — mute and solo —,
   `nextLoopWindow`, `playEndBeat`), `instruments.ts` (`INSTRUMENTS`: piano, felt-piano, electric-piano, organ, strings,
-  pad, choir, bass, synth-bass, sub-bass, growl-bass, bass-808, lead, supersaw, wobble, pluck, bells, sweep — each a recipe that builds one note from oscillators, noise and filters, levels
+  pad, choir, guitar, harp, kalimba, marimba, flute, brass, bass, synth-bass, sub-bass, growl-bass, bass-808, lead, supersaw, wobble, pluck, bells, sweep — each a recipe that builds one note from oscillators, noise and filters, levels
   matched by measuring — and drums; `instrumentById` falls back to the piano), `drums.ts` (the kit, every hit made on
   the spot), `patch.ts` + `voice.ts` (building one note, and letting go of it without a click), `pluck.ts` (pure
   Karplus–Strong), `metronome.ts` (the click, also the count-in), `record.ts` (the microphone with the browser's
@@ -318,7 +332,7 @@
   each), Save → New → Open (the same song back), Open and a dropped file asking first when there are unsaved changes
   (no: the song stays; yes: it opens), a WAV it makes itself imported as a clip (waveform drawn, and inside the saved
   file), a clip renamed on the clip, undo/redo/History, a clip dragged to the edge (the view scrolls), a reload (the
-  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, a pretend MIDI keyboard that the page must not ask the
+  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, a pretend MIDI keyboard that the page must not ask the
   browser for until "Connect a MIDI keyboard" is pressed (and must reconnect by itself after a reload), dark mode,
   Help, What's new, and the bars fitting at 1024 and 1280 px. It fails on any console
   error. It never waits a fixed time: every step waits for what it expects (`until`, `playedPast`), and messages are

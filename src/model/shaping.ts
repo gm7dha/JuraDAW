@@ -3,7 +3,7 @@
  * wobble, pump) and a clip's volume, fades and filter sweep — their usual
  * values, their limits, and the sums the sound engine and the screens share.
  */
-import { MIN_LENGTH, type Arp, type Clip, type Harmony, type HarmonyStyle, type MidiClip, type Note, type Song, type Sweep, type Track, type TrackFilter } from "./types";
+import { MIN_LENGTH, type Arp, type Clip, type FilterWobble, type Harmony, type HarmonyStyle, type MidiClip, type Note, type Song, type Sweep, type Track, type TrackFilter } from "./types";
 
 /** A track's effects with nothing left out. */
 export interface TrackEffects {
@@ -16,6 +16,10 @@ export interface TrackEffects {
   lows: number;
   highs: number;
   chop: number;
+  squeeze: number;
+  sway: number;
+  swirl: number;
+  swing: number;
 }
 
 /** A filter that changes nothing. */
@@ -25,17 +29,17 @@ const share = (v: unknown, fallback = 0): number => (typeof v === "number" && Nu
 
 /** A filter with every value inside its limits; a missing cutoff is the place where that kind changes nothing. */
 export function cleanFilter(v: Partial<TrackFilter> | undefined | null): TrackFilter {
-  const kind = v?.kind === "high" ? "high" : "low";
-  return { kind, cutoff: share(v?.cutoff, kind === "low" ? 1 : 0), resonance: share(v?.resonance) };
+  const kind = v?.kind === "high" ? "high" : v?.kind === "band" ? "band" : "low";
+  return { kind, cutoff: share(v?.cutoff, kind === "low" ? 1 : kind === "high" ? 0 : 0.5), resonance: share(v?.resonance) };
 }
 
 /** Does this filter change the sound at all? */
 export function filterIsOn(filter: TrackFilter): boolean {
-  return filter.kind === "low" ? filter.cutoff < 0.999 : filter.cutoff > 0.001;
+  return filter.kind === "band" || (filter.kind === "low" ? filter.cutoff < 0.999 : filter.cutoff > 0.001);
 }
 
 /** A track's effects, every one filled in (off where the track doesn't say). */
-export function effectsOf(track: Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop">): TrackEffects {
+export function effectsOf(track: Pick<Track, "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "squeeze" | "sway" | "swirl" | "swing">): TrackEffects {
   return {
     drive: share(track.drive),
     crush: share(track.crush),
@@ -45,6 +49,10 @@ export function effectsOf(track: Pick<Track, "drive" | "crush" | "filter" | "cho
     lows: tone(track.lows),
     highs: tone(track.highs),
     chop: share(track.chop),
+    squeeze: share(track.squeeze),
+    sway: share(track.sway),
+    swirl: share(track.swirl),
+    swing: share(track.swing),
   };
 }
 
@@ -153,7 +161,7 @@ export function arpNotes(clip: MidiClip, arp: Arp): Omit<Note, "id">[] {
 /** Does the track have any effect of its own switched on? */
 export function hasEffects(track: Track): boolean {
   const e = effectsOf(track);
-  return e.drive > 0 || e.crush > 0 || e.chorus > 0 || e.pump > 0 || e.chop > 0 || e.lows !== 0 || e.highs !== 0 || filterIsOn(e.filter) || !!track.harmony;
+  return e.drive > 0 || e.crush > 0 || e.chorus > 0 || e.pump > 0 || e.chop > 0 || e.lows !== 0 || e.highs !== 0 || filterIsOn(e.filter) || !!track.harmony || e.squeeze > 0 || e.sway > 0 || e.swirl > 0 || e.swing > 0 || !!track.filterWobble;
 }
 
 /** The lowest and highest places the filter can cut, in hertz. */
@@ -284,4 +292,60 @@ export function harmonySteps(style: HarmonyStyle): readonly number[] {
 /** A harmoniser style's name on screen. */
 export function harmonyName(style: HarmonyStyle): string {
   return (HARMONY_STYLES.find((s) => s.style === style) ?? HARMONY_STYLES[0]).name;
+}
+
+// ── Filter wobble ──
+
+/** How many beats one filter wobble takes, slowest first. */
+export const WOBBLE_RATES = [2, 1, 0.5, 1 / 3, 0.25] as const;
+
+/** A filter wobble's speed in words. */
+export function wobbleRateWords(rate: number): string {
+  if (Math.abs(rate - 2) < 1e-6) return "every 2 beats";
+  if (Math.abs(rate - 1) < 1e-6) return "every beat";
+  if (Math.abs(rate - 0.5) < 1e-6) return "twice a beat";
+  if (Math.abs(rate - 1 / 3) < 1e-6) return "three times a beat";
+  return "four times a beat";
+}
+
+/** A filter wobble made safe, or undefined when it's off. */
+export function cleanFilterWobble(v: unknown): FilterWobble | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const w = v as Partial<FilterWobble>;
+  const depth = share(w.depth);
+  if (depth <= 0) return undefined;
+  const rate = WOBBLE_RATES.find((r) => typeof w.rate === "number" && Math.abs(r - w.rate) < 1e-6) ?? 0.5;
+  return { rate, depth };
+}
+
+/**
+ * Where a wobbling filter is at a beat (0–1 as the cutoff): it starts each wobble where the track has it and moves
+ * away and back — down (muffling) for a low or band filter, up (thinning) for a high one. In time with the song.
+ */
+export function wobbledCutoff(base: number, wobble: FilterWobble, beat: number, kind: TrackFilter["kind"]): number {
+  const dip = wobble.depth * 0.8 * (0.5 - 0.5 * Math.cos((2 * Math.PI * beat) / wobble.rate));
+  return kind === "high" ? Math.min(1, base + dip) : Math.max(0, base - dip);
+}
+
+// ── Swing ──
+
+/** Do a clip's notes sit on sixteenths (some on the 2nd or 4th sixteenth of a beat)? Then they swing in sixteenths, else in eighths. */
+export function swingsInSixteenths(notes: readonly { start: number }[]): boolean {
+  return notes.some((n) => {
+    const q = n.start * 4;
+    return Math.abs(q - Math.round(q)) < 1e-3 && Math.round(q) % 2 !== 0;
+  });
+}
+
+/**
+ * How much later a note plays with swing (beats). Notes on the off-beat — the "and" between beats, or the 2nd and
+ * 4th sixteenths — come later, up to a triplet feel at full swing; notes on the beat stay where they are.
+ */
+export function swingDelay(beat: number, amount: number, sixteenths: boolean): number {
+  if (!(amount > 0)) return 0;
+  const grid = sixteenths ? 0.25 : 0.5;
+  const q = beat / grid;
+  const step = Math.round(q);
+  if (Math.abs(q - step) > 1e-3 || step % 2 === 0) return 0;
+  return (amount * grid) / 3;
 }

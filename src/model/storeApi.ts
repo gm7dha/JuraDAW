@@ -6,7 +6,7 @@
  * fresh array or object each call.
  */
 import type { RecordedTake } from "../audio/engineApi";
-import type { Arp, AudioInfo, Harmony, Clip, Loop, Note, Song, Sweep, Track, TrackFilter, TrackKind } from "./types";
+import type { Arp, AudioInfo, FilterWobble, Harmony, Clip, Loop, Note, Song, Sweep, Track, TrackFilter, TrackKind } from "./types";
 
 /** Select = pick, move, resize. Pencil = draw clips and notes. Eraser = click to remove. Scissors = split a clip. */
 export type Tool = "select" | "pencil" | "eraser" | "scissors";
@@ -20,7 +20,7 @@ export type Snap = "bar" | 1 | 0.5 | 0.25 | 0.125 | 0;
 export type ClipPatch = Clip extends infer C ? (C extends Clip ? Partial<Omit<C, "id" | "kind" | "sweep" | "reverse">> & { sweep?: Sweep | null; reverse?: boolean } : never) : never;
 
 /** What may be changed on a track (for the filter, just the parts that change). */
-export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null };
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony" | "filterWobble">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null; filterWobble?: Partial<FilterWobble> | null };
 
 export interface Toast {
   id: number;

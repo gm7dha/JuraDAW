@@ -547,6 +547,138 @@ const SOFT_WALL = (() => {
  * How loud each recipe is made, set by measuring (devkit/audio-check.mjs
  * prints the figures) so the instruments match at velocity 100.
  */
+// ── acoustic: guitar, harp, kalimba, marimba, flute, brass ──
+
+/** Acoustic guitar: a plucked string through a wooden body (two low resonances) and a soft top. */
+const guitar: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const player = p.player(pluckBuffer(p.ctx, pitch, f, 0.25 + 0.45 * bright));
+  const body = p.filter("peaking", 110, 1.2);
+  body.gain.value = 6;
+  const air = p.filter("peaking", 230, 1.4);
+  air.gain.value = 3;
+  const top = p.filter("lowpass", Math.min(f * 7 + 1800, 7000), 0.6);
+  const amp = p.envelope(1, 0.002, 1, 0.1);
+  const level = p.gain(LEVEL.guitar * velocityGain(velocity));
+  player.connect(body).connect(air).connect(top).connect(amp).connect(level);
+  return p.parts(level, 0.12);
+};
+
+/** Harp: a gentler, rounder pluck that rings on after the string is let go. */
+const harp: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const player = p.player(pluckBuffer(p.ctx, pitch, f, 0.15 + 0.3 * bright));
+  const soft = p.filter("lowpass", Math.min(f * 5 + 900, 9000), 0.5);
+  const amp = p.envelope(1, 0.006, 1, 0.1);
+  // A pure tone under it, so the note stays round as the pluck fades.
+  const round = p.osc("sine", f);
+  const roundLevel = p.envelope(0.35, 0.01, 0, clamp(2.4 * Math.pow(2, -(pitch - 48) / 24), 0.4, 3));
+  round.connect(roundLevel).connect(amp);
+  const level = p.gain(LEVEL.harp * velocityGain(velocity));
+  player.connect(soft).connect(amp).connect(level);
+  return p.parts(level, 0.7);
+};
+
+/** Kalimba (thumb piano): a metal tine — a pure note, a bright ping high above it that dies at once, and a tap on the wood. */
+const kalimba: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const decay = clamp(1.1 * Math.pow(2, -(pitch - 60) / 24), 0.25, 2);
+  const tone = p.osc("sine", f);
+  const toneLevel = p.envelope(1, 0.002, 0, decay);
+  const ping = p.osc("sine", f * 5.92);
+  const pingLevel = p.envelope(0.32 * bright * Math.min(1, 1200 / f), 0.001, 0, 0.05);
+  const tap = p.noise();
+  tap.stop(p.start + 0.05);
+  const tapTone = p.filter("bandpass", clamp(f * 2, 300, 3000), 1.5);
+  const tapLevel = p.envelope(0.18 * bright, 0.001, 0, 0.008);
+  const mix = p.gain(1);
+  tone.connect(toneLevel).connect(mix);
+  ping.connect(pingLevel).connect(mix);
+  tap.connect(tapTone).connect(tapLevel).connect(mix);
+  const level = p.gain(LEVEL.kalimba * velocityGain(velocity));
+  mix.connect(level);
+  return p.parts(level, 0.25);
+};
+
+/** Marimba: a wooden bar — its note, a ring two octaves up (as marimba bars are tuned) and the soft knock of the mallet. */
+const marimba: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const decay = clamp(0.8 * Math.pow(2, -(pitch - 48) / 22), 0.12, 1.4);
+  const tone = p.osc("sine", f);
+  const toneLevel = p.envelope(1, 0.003, 0, decay);
+  const ring = p.osc("sine", f * 4);
+  const ringLevel = p.envelope(0.3 * bright * Math.min(1, 1500 / f), 0.002, 0, decay * 0.2);
+  const knock = p.noise();
+  knock.stop(p.start + 0.06);
+  const knockTone = p.filter("lowpass", clamp(f * 3, 400, 2500), 0.7);
+  const knockLevel = p.envelope(0.22 * bright, 0.001, 0, 0.01);
+  const mix = p.gain(1);
+  tone.connect(toneLevel).connect(mix);
+  ring.connect(ringLevel).connect(mix);
+  knock.connect(knockTone).connect(knockLevel).connect(mix);
+  const level = p.gain(LEVEL.marimba * velocityGain(velocity));
+  mix.connect(level);
+  return p.parts(level, 0.15);
+};
+
+/** Flute: a nearly pure tone with breath in it, that sways a little (vibrato) once the note has settled. */
+const flute: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const tone = p.osc("sine", f);
+  const second = p.osc("sine", f * 2);
+  const vibrato = p.osc("sine", 5.2);
+  const vibratoDepth = p.gain(0);
+  vibratoDepth.gain.setValueAtTime(0, t);
+  vibratoDepth.gain.linearRampToValueAtTime(0, t + 0.25);
+  vibratoDepth.gain.linearRampToValueAtTime(7, t + 0.7);
+  vibrato.connect(vibratoDepth);
+  vibratoDepth.connect(tone.detune);
+  vibratoDepth.connect(second.detune);
+  const breath = p.noise();
+  const breathTone = p.filter("bandpass", Math.min(f * 2, 8000), 1.8);
+  const breathLevel = p.gain(0.06 + 0.06 * bright);
+  const mix = p.gain(1);
+  tone.connect(mix);
+  second.connect(p.gain(0.12 + 0.12 * bright)).connect(mix);
+  breath.connect(breathTone).connect(breathLevel).connect(mix);
+  // A soft start (the breath first), then held.
+  const amp = p.envelope(1, 0.07, 0.85, 0.2);
+  const level = p.gain(LEVEL.flute * velocityGain(velocity));
+  mix.connect(amp).connect(level);
+  return p.parts(level, 0.12);
+};
+
+/** Brass: buzzing (sawtooth) lips, bright as the note is blown and settling warmer, the pitch rising into place. */
+const brass: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const a = p.osc("sawtooth", f, -4);
+  const b = p.osc("sawtooth", f, 4);
+  for (const o of [a, b]) {
+    o.detune.setValueAtTime(o.detune.value - 35, t);
+    o.detune.linearRampToValueAtTime(o.detune.value + 35, t + 0.05);
+  }
+  const tone = p.filter("lowpass", f * 1.5, 1.1);
+  const top = Math.min(f * (3 + 6 * bright), 12000);
+  tone.frequency.setValueAtTime(f * 1.2, t);
+  tone.frequency.linearRampToValueAtTime(top, t + 0.06);
+  tone.frequency.setTargetAtTime(Math.min(f * (2.2 + 3 * bright), 9000), t + 0.06, 0.25);
+  const mix = p.gain(0.5);
+  a.connect(mix);
+  b.connect(mix);
+  const amp = p.envelope(1, 0.035, 0.8, 0.3);
+  const level = p.gain(LEVEL.brass * velocityGain(velocity));
+  mix.connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.1);
+};
+
 const LEVEL = {
   piano: 0.42,
   "electric-piano": 0.32,
@@ -566,6 +698,12 @@ const LEVEL = {
   wobble: 0.35,
   sweep: 1,
   "bass-808": 0.5,
+  guitar: 0.41,
+  harp: 0.38,
+  kalimba: 0.4,
+  marimba: 0.4,
+  flute: 0.22,
+  brass: 0.44,
 };
 
 // ── the list ──
@@ -593,6 +731,12 @@ export const INSTRUMENTS: Instrument[] = [
   keyed("strings", "Strings", "Strings and pads", strings),
   keyed("pad", "Soft pad", "Strings and pads", pad),
   keyed("choir", "Choir", "Strings and pads", choir),
+  keyed("guitar", "Acoustic guitar", "Acoustic", guitar),
+  keyed("harp", "Harp", "Acoustic", harp),
+  keyed("kalimba", "Kalimba", "Acoustic", kalimba),
+  keyed("marimba", "Marimba", "Acoustic", marimba),
+  keyed("flute", "Flute", "Acoustic", flute),
+  keyed("brass", "Brass", "Acoustic", brass),
   keyed("bass", "Bass guitar", "Bass", bass),
   keyed("synth-bass", "Synth bass", "Bass", synthBass),
   keyed("sub-bass", "Sub bass", "Bass", subBass),
