@@ -34,6 +34,7 @@ export function valueWords(track: Track, param: AutoParam, value: number): strin
   if (param === "volume") return `${Math.round(value * 100)}%`;
   if (param === "pan") return panValueWords(value);
   const kind = effectsOf(track).filter.kind;
+  if (kind === "band") return `keeps around ${hzText(cutoffHz(value))}`;
   if (kind === "low" && value >= 0.999) return "open";
   if (kind === "high" && value <= 0.001) return "open";
   return `cuts ${kind === "low" ? "above" : "below"} ${hzText(cutoffHz(value))}`;

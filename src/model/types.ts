@@ -48,6 +48,23 @@ export interface Track {
   automation?: Automation;
   /** Harmoniser: copies of the sound at other pitches sung along with it (left out when off). */
   harmony?: Harmony;
+  /** Squeeze (a compressor): evens out loud and quiet so the track sits steady and punchy, 0–1. */
+  squeeze?: number;
+  /** Sway: the sound swings from left to right and back in time with the song, 0–1 (how far). */
+  sway?: number;
+  /** Swirl (a phaser): a slow, sweeping, hollow whoosh, 0–1. */
+  swirl?: number;
+  /** Swing: notes on the off-beats come a little late, for a shuffle or groove, 0–1 (1 = a full triplet feel). */
+  swing?: number;
+  /** Filter wobble: the filter opens and closes in time with the song (the dubstep "wub"). */
+  filterWobble?: FilterWobble;
+}
+
+export interface FilterWobble {
+  /** Beats for one wobble: 2, 1, 0.5, 1/3 or 0.25. */
+  rate: number;
+  /** How far the filter moves, 0–1. */
+  depth: number;
 }
 
 /** Which notes the harmoniser adds, each a fixed step from the sound itself. */
@@ -82,9 +99,12 @@ export interface Arp {
 }
 
 export interface TrackFilter {
-  /** "low" lets the low part through (a low-pass: muffles); "high" lets the high part through (a high-pass: thins). */
-  kind: "low" | "high";
-  /** Where it cuts, 0 (the very bottom) – 1 (the very top). A "low" filter at 1, or a "high" one at 0, changes nothing. */
+  /**
+   * "low" lets the low part through (a low-pass: muffles); "high" lets the high part through (a high-pass: thins);
+   * "band" keeps only a slice around the cutoff (a band-pass: like a telephone or a small radio).
+   */
+  kind: "low" | "high" | "band";
+  /** Where it cuts, 0 (the very bottom) – 1 (the very top). A "low" filter at 1, or a "high" one at 0, changes nothing; a "band" filter always changes the sound. */
   cutoff: number;
   /** A ringing emphasis at the cut, 0–1. */
   resonance: number;

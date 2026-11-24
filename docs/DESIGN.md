@@ -89,5 +89,7 @@ files when you Save.
   played backwards.
 - **v0.5** — automation (volume, filter and left–right lines drawn over the song, in their own tab) and a
   harmoniser on every track.
+- **v0.6** — acoustic instruments (guitar, harp, kalimba, marimba, flute, brass), Squeeze, Swirl and Sway, swing,
+  a band filter and a filter wobble in time with the song.
 - **Later** — recent songs, more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

@@ -143,6 +143,20 @@ describe("making a song", () => {
 });
 
 describe("shaping the sound", () => {
+  it("uses the v0.6 effects, the band filter, the filter wobble and the acoustic instruments", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "growl-bass", name: "Wub", squeeze: 40, filter: { kind: "low", cutoff: 60 }, filter_wobble: { rate: 0.333, depth: 80 } });
+    expect(s.song.tracks[0]).toMatchObject({ squeeze: 0.4, filterWobble: { rate: 1 / 3, depth: 0.8 } });
+    await ok(s, "add_track", { instrument: "marimba", name: "Mallets", swing: 50, sway: 30, swirl: 20, filter: { kind: "band", cutoff: 50 } });
+    expect(s.song.tracks[1]).toMatchObject({ instrument: "marimba", swing: 0.5, sway: 0.3, swirl: 0.2, filter: { kind: "band" } });
+    const look = await ok(s, "describe_song");
+    expect(look).toMatch(/filter wobble three times a beat, depth 80%/);
+    expect(look).toMatch(/swirl 20%, sway 30%, swing 50%/);
+    expect(await bad(s, "edit_track", { track: "Wub", filter_wobble: { rate: 3 } })).toMatch(/rate/);
+    await ok(s, "edit_track", { track: "Wub", filter_wobble: null });
+    expect("filterWobble" in s.song.tracks[0]).toBe(false);
+    for (const id of ["guitar", "harp", "kalimba", "flute", "brass"]) await ok(s, "add_track", { instrument: id });
+  });
   it("switches the harmoniser on, changes it and takes it off", async () => {
     const { s } = session();
     await ok(s, "add_track", { instrument: "choir", name: "Voices", harmoniser: { voices: "minor", volume: 50 } });
@@ -191,7 +205,7 @@ describe("shaping the sound", () => {
     await ok(s, "edit_track", { track: "Chords", filter: null });
     expect("filter" in s.song.tracks[0]).toBe(false);
     expect(await bad(s, "edit_track", { track: "Chords", drive: 140 })).toMatch(/drive/);
-    expect(await bad(s, "edit_track", { track: "Chords", filter: { kind: "band" } })).toMatch(/"low", "high"/);
+    expect(await bad(s, "edit_track", { track: "Chords", filter: { kind: "notch" } })).toMatch(/"low", "high", "band"/);
     expect(await bad(s, "edit_clip", { clip: 1, track: "Chords", filter_sweep: { from: 10 } })).toMatch(/filter_sweep\.to/);
     // A build: a noise sweep that lasts as long as its note.
     await ok(s, "add_track", { instrument: "sweep" });

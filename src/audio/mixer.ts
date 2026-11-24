@@ -2,7 +2,7 @@
  * The mixer: the path every sound takes on its way out, the same for live
  * playing and for the mixdown.
  *
- *   each track:  input → its own effects (drive → crush → tone → [harmony voices] → filter → wobble → pump → chop) → its volume line
+ *   each track:  input → its own effects (drive → crush → tone → [harmony voices] → filter → [wobble, swirl] → pump → chop → squeeze) → its volume line
  *                      → volume (and mute/solo) → left–right → the mix
  *                                         ├→ its share to the reverb
  *                                         └→ its share to the echo
@@ -14,7 +14,7 @@
  * echo (repeats in time with the tempo) shared by all the tracks. Changes
  * are eased in over a few thousandths of a second so nothing clicks.
  */
-import { CHOP_OPEN_SHARE, HARMONY_STYLES, HIGHS_HZ, LOWS_HZ, PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, TONE_DB, chopFloor, cutoffHz, effectsOf, filterIsOn, harmonySteps, stepRatio, pumpFloor, sweepAt, trackHasSweeps, type TrackEffects } from "../model/shaping";
+import { CHOP_OPEN_SHARE, HARMONY_STYLES, HIGHS_HZ, LOWS_HZ, PUMP_DIP_SECONDS, PUMP_SWELL_SHARE, TONE_DB, chopFloor, cutoffHz, effectsOf, filterIsOn, harmonySteps, stepRatio, pumpFloor, sweepAt, trackHasSweeps, wobbledCutoff, type TrackEffects } from "../model/shaping";
 import { lineBetween, lineOf, valueAt, volumeValueGain } from "../model/automation";
 import type { AutoPoint, Clip, Harmony, Song, Track } from "../model/types";
 import { audibleTracks } from "./schedule";
@@ -126,6 +126,29 @@ export function resonanceQ(resonance: number): number {
   return 0.7 + 15 * clamp(resonance, 0, 1) * clamp(resonance, 0, 1);
 }
 
+interface Squeezer {
+  compressor: DynamicsCompressorNode;
+  /** Turns it back up after the squeeze, so the track stays about as loud. */
+  makeUp: GainNode;
+}
+
+interface Swirl {
+  wet: GainNode;
+  stages: BiquadFilterNode[];
+  nodes: AudioNode[];
+}
+
+/** The swirl's four sweeping stages: middle and reach (hertz), and how often it sweeps (times a second). */
+const SWIRL_HZ = 900;
+const SWIRL_REACH = 700;
+const SWIRL_RATE = 0.3;
+
+/** Squeeze's settings for an amount 0–1: where it starts to act (dB), how hard, and a little more turned back up (dB) — the browser's compressor already makes up most of what it takes away. */
+export function squeezeSettings(amount: number): { threshold: number; ratio: number; makeUp: number } {
+  const a = clamp(amount, 0, 1);
+  return { threshold: -12 - 28 * a, ratio: 2 + 10 * a, makeUp: 3 * a };
+}
+
 interface Wobble {
   wet: GainNode;
   depths: GainNode[];
@@ -163,8 +186,16 @@ interface Strip {
   filter: BiquadFilterNode;
   pump: GainNode;
   chop: GainNode;
+  /** Squeeze: the plain way through (1 while Squeeze is off, 0 while on)… */
+  plain: GainNode;
+  /** …and the squeezed way, made the first time Squeeze is turned up. */
+  squeeze: Squeezer | null;
   /** The volume line, while the song plays (1 otherwise). */
   auto: GainNode;
+  /** Sway: swings the sound left and right while the song plays (in the middle otherwise). */
+  sway: StereoPannerNode;
+  /** Made the first time the track's swirl is turned up. */
+  swirl: Swirl | null;
   /** Made the first time the track's wobble is turned up. */
   wobble: Wobble | null;
   /** Made the first time the track's harmoniser is turned on. */
@@ -325,6 +356,10 @@ export class Mixer {
       auto: ctx.createGain(),
       wobble: null,
       harmony: null,
+      plain: ctx.createGain(),
+      squeeze: null,
+      sway: ctx.createStereoPanner(),
+      swirl: null,
       driveNow: 0,
       crushNow: 0,
       fader: ctx.createGain(),
@@ -344,7 +379,7 @@ export class Mixer {
     strip.highs.frequency.value = HIGHS_HZ;
     strip.highs.gain.value = 0;
     strip.input.connect(strip.drive).connect(strip.driveOut).connect(strip.crush).connect(strip.lows).connect(strip.highs).connect(strip.filter).connect(strip.pump);
-    strip.pump.connect(strip.chop).connect(strip.auto).connect(strip.fader).connect(strip.pan).connect(this.mix);
+    strip.pump.connect(strip.chop).connect(strip.plain).connect(strip.auto).connect(strip.fader).connect(strip.pan).connect(strip.sway).connect(this.mix);
     strip.pan.connect(strip.reverbSend).connect(this.reverbIn);
     strip.pan.connect(strip.echoSend).connect(this.echoIn);
     if (this.meters) strip.meter = this.makeMeter(strip.pan);
@@ -430,6 +465,34 @@ export class Mixer {
     return harmony;
   }
 
+  /** The swirl (a phaser): the sound through four stages whose sweet spot sweeps slowly up and down, added to the sound. */
+  private makeSwirl(strip: Strip): Swirl {
+    const ctx = this.ctx;
+    const wet = ctx.createGain();
+    wet.gain.value = 0;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = SWIRL_RATE;
+    const reach = ctx.createGain();
+    reach.gain.value = SWIRL_REACH;
+    lfo.connect(reach);
+    lfo.start();
+    const swirl: Swirl = { wet, stages: [], nodes: [wet, lfo, reach] };
+    let last: AudioNode = strip.filter;
+    for (let i = 0; i < 4; i++) {
+      const stage = ctx.createBiquadFilter();
+      stage.type = "allpass";
+      stage.frequency.value = SWIRL_HZ;
+      stage.Q.value = 0.6;
+      reach.connect(stage.frequency);
+      last.connect(stage);
+      last = stage;
+      swirl.stages.push(stage);
+      swirl.nodes.push(stage);
+    }
+    last.connect(wet).connect(strip.pump);
+    return swirl;
+  }
+
   /** A track's own effects, as it has them now. */
   private applyEffects(strip: Strip, e: TrackEffects, harmony: Harmony | undefined, sweeps: boolean, atOnce: boolean): void {
     if (e.drive !== strip.driveNow) {
@@ -443,13 +506,35 @@ export class Mixer {
     }
     // The filter is in use if the track has it on, or a clip on the track sweeps it.
     const on = filterIsOn(e.filter) || sweeps;
-    const type: BiquadFilterType = !on ? "allpass" : e.filter.kind === "high" ? "highpass" : "lowpass";
+    const type: BiquadFilterType = !on ? "allpass" : e.filter.kind === "high" ? "highpass" : e.filter.kind === "band" ? "bandpass" : "lowpass";
     if (strip.filter.type !== type) strip.filter.type = type;
-    this.set(strip.filter.Q, on ? resonanceQ(e.filter.resonance) : 0.7, atOnce);
+    // A band filter needs a narrower slice to be heard as one.
+    this.set(strip.filter.Q, on ? (e.filter.kind === "band" ? Math.max(1.4, resonanceQ(e.filter.resonance)) : resonanceQ(e.filter.resonance)) : 0.7, atOnce);
     // While the song plays and a clip sweeps this filter, its place is set in time with the song (scheduleShaping).
     if (!(sweeps && this.shaping)) this.set(strip.filter.frequency, this.hz(e.filter.cutoff), atOnce);
     this.set(strip.lows.gain, e.lows * TONE_DB, atOnce);
     this.set(strip.highs.gain, e.highs * TONE_DB, atOnce);
+    // Squeeze: the squeezed way through takes over from the plain one (made the first time it's turned up).
+    if (e.squeeze > 0 && !strip.squeeze) {
+      const compressor = this.ctx.createDynamicsCompressor();
+      compressor.knee.value = 8;
+      compressor.attack.value = 0.006;
+      compressor.release.value = 0.16;
+      const makeUp = this.ctx.createGain();
+      makeUp.gain.value = 0;
+      strip.chop.connect(compressor).connect(makeUp).connect(strip.auto);
+      strip.squeeze = { compressor, makeUp };
+    }
+    if (strip.squeeze) {
+      const q = squeezeSettings(e.squeeze);
+      this.set(strip.squeeze.compressor.threshold, q.threshold, atOnce);
+      this.set(strip.squeeze.compressor.ratio, q.ratio, atOnce);
+      this.set(strip.squeeze.makeUp.gain, e.squeeze > 0 ? Math.pow(10, q.makeUp / 20) : 0, atOnce);
+    }
+    this.set(strip.plain.gain, e.squeeze > 0 ? 0 : 1, atOnce);
+    // Swirl: four sweeping stages beside the sound; where they're out of step with it, notes of the sound are hollowed out.
+    if (e.swirl > 0 && !strip.swirl) strip.swirl = this.makeSwirl(strip);
+    if (strip.swirl) this.set(strip.swirl.wet.gain, 0.9 * e.swirl, atOnce);
     if (harmony && !strip.harmony) strip.harmony = this.makeHarmoniser(strip);
     if (strip.harmony) {
       const steps = harmony ? harmonySteps(harmony.style) : [];
@@ -524,18 +609,32 @@ export class Mixer {
         const own = Math.max(volumeToGain(track.volume), 1e-4);
         follow(strip.auto.gain, lineBetween(volume, from, to), (v) => Math.min(16, volumeValueGain(v) / own));
       }
+      // Sway: left and right and back, once a bar, in time with the song.
+      if (e.sway > 0) {
+        const corners: AutoPoint[] = [];
+        const step = 0.125;
+        for (let k = Math.ceil(from / step - 1e-9); k * step < to - 1e-9; k++) corners.push({ beat: k * step, value: 0 });
+        const swayAt = (beat: number) => e.sway * Math.sin((2 * Math.PI * beat) / song.beatsPerBar);
+        follow(strip.sway.pan, [{ beat: from, value: 0 }, ...corners.filter((c) => c.beat > from), { beat: to, value: 0 }].map((c) => ({ beat: c.beat, value: swayAt(c.beat) })), (v) => v);
+      }
       const pan = lineOf(track, "pan");
       if (pan) follow(strip.pan.pan, lineBetween(pan, from, to), (v) => v * 2 - 1);
       // The filter: a clip's sweep where there is one, else the filter line, else where the track has it.
       const filterLine = lineOf(track, "filter");
-      if (filterLine || trackHasSweeps(song, track.id)) {
+      const wobble = track.filterWobble;
+      if (filterLine || wobble || trackHasSweeps(song, track.id)) {
         const corners = new Set<number>([from, to]);
+        if (wobble) {
+          const step = wobble.rate / 12;
+          for (let k = Math.ceil(from / step - 1e-9); k * step < to - 1e-9; k++) corners.add(k * step);
+        }
         if (filterLine) for (const p of lineBetween(filterLine, from, to)) corners.add(p.beat);
         for (const c of song.clips) {
           if (c.trackId !== track.id || !c.sweep) continue;
           for (const b of [c.start, c.start + clipBeats(c)]) if (b > from && b < to) corners.add(b);
         }
-        const at = (beat: number) => sweepAt(song, track.id, beat, clipBeats) ?? (filterLine ? valueAt(filterLine, beat) : e.filter.cutoff);
+        const base = (beat: number) => sweepAt(song, track.id, beat, clipBeats) ?? (filterLine ? valueAt(filterLine, beat) : e.filter.cutoff);
+        const at = (beat: number) => (wobble ? wobbledCutoff(base(beat), wobble, beat, e.filter.kind) : base(beat));
         const beats = [...corners].sort((x, y) => x - y);
         follow(strip.filter.frequency, beats.map((beat, i) => ({ beat, value: at(i === beats.length - 1 ? beat - 1e-6 : beat) })), (v) => this.hz(v), true);
       }
@@ -556,6 +655,8 @@ export class Mixer {
       strip.chop.gain.setTargetAtTime(1, now, SMOOTH);
       strip.filter.frequency.cancelScheduledValues(now);
       strip.filter.frequency.setTargetAtTime(this.hz(effectsOf(track).filter.cutoff), now, SMOOTH);
+      strip.sway.pan.cancelScheduledValues(now);
+      strip.sway.pan.setTargetAtTime(0, now, SMOOTH);
       strip.auto.gain.cancelScheduledValues(now);
       strip.auto.gain.setTargetAtTime(1, now, SMOOTH);
       strip.pan.pan.cancelScheduledValues(now);
@@ -583,7 +684,7 @@ export class Mixer {
       const isNew = !strip;
       if (!strip) this.strips.set(track.id, (strip = this.makeStrip()));
       this.applyTrack(strip, track, audible.has(track.id), isNew);
-      this.applyEffects(strip, effectsOf(track), track.harmony, trackHasSweeps(song, track.id) || !!lineOf(track, "filter"), isNew);
+      this.applyEffects(strip, effectsOf(track), track.harmony, trackHasSweeps(song, track.id) || !!lineOf(track, "filter") || !!track.filterWobble, isNew);
     }
     for (const [id, strip] of this.strips) {
       if (song.tracks.some((t) => t.id === id)) continue;
@@ -591,7 +692,7 @@ export class Mixer {
       // Fade it out, then take it apart a moment later, so a track removed while sounding doesn't click.
       strip.fader.gain.setTargetAtTime(0, this.ctx.currentTime, SMOOTH);
       const takeApart = () => {
-        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.lows, strip.highs, strip.filter, strip.pump, strip.chop, strip.auto, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, ...(strip.wobble?.nodes ?? []), ...(strip.harmony?.nodes ?? [])]) node.disconnect();
+        for (const node of [strip.input, strip.drive, strip.driveOut, strip.crush, strip.lows, strip.highs, strip.filter, strip.pump, strip.chop, strip.auto, strip.fader, strip.pan, strip.reverbSend, strip.echoSend, strip.plain, strip.sway, ...(strip.squeeze ? [strip.squeeze.compressor, strip.squeeze.makeUp] : []), ...(strip.swirl?.nodes ?? []), ...(strip.wobble?.nodes ?? []), ...(strip.harmony?.nodes ?? [])]) node.disconnect();
       };
       if (this.meters) setTimeout(takeApart, 150);
       else takeApart();

@@ -730,10 +730,10 @@ try {
     await page.locator('.side-panel input[aria-label="Drive"]').fill("0.4");
     expect((await trackNow("drive")) === 0.4, "the Drive slider setting the track's drive");
     await page.locator('.side-panel input[aria-label="Pump"]').fill("0.8");
-    await page.click(".side-panel button:has-text('Cut the bottom')");
+    await page.click(".side-panel button:has-text('Cut bottom')");
     await page.locator('.side-panel input[aria-label="Filter"]').fill("0.3");
     expect((await trackNow("filter.kind")) === "high" && (await trackNow("filter.cutoff")) === 0.3, "the filter cutting the bottom at the place chosen");
-    await page.click(".side-panel button:has-text('Cut the top')");
+    await page.click(".side-panel button:has-text('Cut top')");
     expect((await trackNow("filter")) === undefined, "the filter being off again after choosing the other kind");
     await page.locator('.side-panel input[aria-label="Fade in"]').fill("4");
     expect((await clipNow("fadeIn")) === 4, "the Fade in slider giving the clip a four-beat swell");
@@ -768,6 +768,27 @@ try {
     }
     await page.locator('.side-panel button:has-text("Wobbly synth")').first().click();
     expect((await trackNow("instrument")) === "wobble", "picking the wobbly synth");
+    // v0.6: the acoustic instruments, Squeeze, Sway, Swirl, Swing, the band filter and the filter wobble.
+    for (const name of ["Acoustic guitar", "Harp", "Kalimba", "Marimba", "Flute", "Brass"]) {
+      expect((await page.locator(`.side-panel button:has-text("${name}")`).count()) >= 1, `"${name}" among the instruments`);
+    }
+    await page.locator('.side-panel button:has-text("Marimba")').first().click();
+    expect((await trackNow("instrument")) === "marimba", "picking the marimba");
+    for (const [label, field] of [["Squeeze", "squeeze"], ["Sway", "sway"], ["Swirl", "swirl"], ["Swing", "swing"]]) {
+      await page.locator(`.side-panel input[aria-label="${label}"]`).fill("0.5");
+      expect((await trackNow(field)) === 0.5, `the ${label} slider setting the track's ${field}`);
+    }
+    await page.click(".side-panel button:has-text('Keep middle')");
+    expect((await trackNow("filter.kind")) === "band", "the filter keeping only the middle");
+    await page.getByLabel("Filter wobble — opens and closes in time").check();
+    await page.selectOption('.side-panel select[aria-label="How often the filter wobbles"]', "0.25");
+    expect((await trackNow("filterWobble.rate")) === 0.25 && (await trackNow("filterWobble.depth")) === 0.6, "the filter wobbling four times a beat");
+    await page.keyboard.press("Space");
+    await until("s.playing", "playing with every new effect on");
+    await playedPast(1.5);
+    await until(`engine.level("${shaped.id}") > 0.02`, "the marimba heard through its new effects");
+    await page.keyboard.press("Space");
+    await until("!s.playing", "playing to stop");
     // Take it all back, so the rest of the test finds the song as it was.
     const steps = (await get("s.history.past.length")) - 0;
     void steps;

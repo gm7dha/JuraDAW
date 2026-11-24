@@ -3292,6 +3292,12 @@ button.display-button {
   margin: 4px 0 6px;
 }
 
+.filter-kind button {
+  padding-left: 2px;
+  padding-right: 2px;
+  white-space: nowrap;
+}
+
 /* The arpeggiator's four patterns, in a row. */
 .segmented.four {
   grid-template-columns: repeat(4, 1fr);

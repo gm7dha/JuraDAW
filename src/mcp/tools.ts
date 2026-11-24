@@ -8,7 +8,7 @@
 import { FILE_EXTENSION, MOST_BEATS, isDrumKit, newSong, newTrack, readSongFile, songFileText, instrumentLabel } from "../model/document";
 import { AUTO_NAMES, AUTO_PARAMS, MOST_POINTS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
-import { ARP_STYLES, HARMONY_STYLES, arpRateWords, clipGain, effectsOf, filterIsOn } from "../model/shaping";
+import { ARP_STYLES, HARMONY_STYLES, WOBBLE_RATES, arpRateWords, wobbleRateWords, clipGain, effectsOf, filterIsOn } from "../model/shaping";
 import { DRUM_PITCHES, clipEnd, clipLength, drumName, pitchName, songLength, timeText, beatsToSeconds } from "../model/time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, type AutoPoint, type Clip, type MidiClip, type Note, type Song, type Track } from "../model/types";
 import { LIBRARY, cleanValues, findPattern, makePattern, patternSuitsInstrument } from "../library/catalogue";
@@ -20,7 +20,7 @@ import { checkFree, fileNameFor, needFolder, say, writeOut, type ToolDef, type T
 export type { ToolDef, ToolResult } from "./toolKit";
 
 /** The built-in instruments (the ids of src/audio/instruments.ts INSTRUMENTS, kept in step by tests/mcpTools). */
-export const INSTRUMENT_IDS = ["piano", "felt-piano", "electric-piano", "organ", "strings", "pad", "choir", "bass", "synth-bass", "sub-bass", "growl-bass", "bass-808", "lead", "supersaw", "wobble", "pluck", "bells", "sweep", "drums", "drums-808", "drums-electro"] as const;
+export const INSTRUMENT_IDS = ["piano", "felt-piano", "electric-piano", "organ", "strings", "pad", "choir", "guitar", "harp", "kalimba", "marimba", "flute", "brass", "bass", "synth-bass", "sub-bass", "growl-bass", "bass-808", "lead", "supersaw", "wobble", "pluck", "bells", "sweep", "drums", "drums-808", "drums-electro"] as const;
 
 /** How songs are described to the tools: sent to Claude with the server's instructions, and by the format_guide tool. */
 export const FORMAT_GUIDE = `How JuraDAW songs work:
@@ -34,6 +34,8 @@ export const FORMAT_GUIDE = `How JuraDAW songs work:
 - Each track has its own effects, all off unless set (amounts are per cent): "drive" (warmth → grit → fuzz), "crush" (lo-fi, bit-crushed), "bass" and "treble" (−100 to 100: less or more of the low end / top end), "chop" (cuts the sound into sixteenth notes — stutters), "filter" {"kind": "low" (cuts the top: muffled) or "high" (cuts the bottom: thin), "cutoff": 0–100 (where it cuts, from the very bottom to the very top of hearing), "resonance": 0–100 (a ringing edge)}, "wobble" (a slow pitch drift that widens, like worn tape) and "pump" (the volume dips on every beat and swells back, like side-chained dance music) — besides "reverb" and "echo".
 - An instrument track can have an "arpeggiator" {"style": "up" | "down" | "updown" | "random", "rate": "beats" | "eighths" | "triplets" | "sixteenths", "octaves": 1–3}: chords held in its clips are played one note at a time in that pattern (write long held chords; the clip's notes stay as written). null switches it off.
 - Each clip can have its own "volume" (per cent, 100 = as played), "fade_in" and "fade_out" (beats: it swells in / dies away instead of switching on and off) and a "filter_sweep" {"from", "to"} (0–100 as the filter's cutoff): the track's filter moves from one to the other while the clip plays — low to high opens up for a build.
+- More track effects (per cent, off unless set): "squeeze" (a compressor: steadier, punchier), "swirl" (a phaser: a sweeping hollow whoosh), "sway" (swings left and right once a bar), and on instrument tracks "swing" (off-beat notes come late, for a shuffle — eighths, or sixteenths when the clip has notes on them). The filter's "kind" can also be "band" (keeps only a slice around the cutoff: a telephone or small-radio sound). "filter_wobble" {"rate": 2 | 1 | 0.5 | 0.333 | 0.25 (beats for one wobble), "depth": 0–100} opens and closes the filter in time with the song — the dubstep wub (try growl-bass or supersaw with a low filter, rate 0.5 or 0.333).
+- Acoustic instruments: guitar, harp, kalimba, marimba, flute, brass.
 - Any track can have a "harmoniser" {"voices": "below" | "fifth" | "major" | "minor" | "wide", "volume": 0–100}: copies of its sound at other pitches, a fixed step away, sung along with it — the stacked-voice sound of Bon Iver on a recorded voice, or a big octave sound on a lead. "major" and "minor" add chords, so pick the one that matches the song's key. null switches it off.
 - Automation (set_automation): a line drawn over the song moves a track's "volume", "filter" (its cutoff) or "pan" as the song plays — for a fade-out at the end, a filter opening over a build, or a sound drifting from side to side. Unlike a clip's filter_sweep, a line can cross many clips. A clip's own sweep wins over the filter line while that clip plays.
 - The "sweep" instrument is a rush of noise for builds: a note from C4 up rises and swells for as long as the note lasts (a 4-bar note = a 4-bar build; higher notes end higher); a note below C4 falls and dies away.
@@ -185,6 +187,11 @@ function effectsWords(track: Track, bpb: number): string {
   if (e.lows !== 0) words.push(`bass ${Math.round(e.lows * 100)}`);
   if (e.highs !== 0) words.push(`treble ${Math.round(e.highs * 100)}`);
   if (e.chop > 0) words.push(`chop ${pct(e.chop)}`);
+  if (e.swirl > 0) words.push(`swirl ${pct(e.swirl)}`);
+  if (e.squeeze > 0) words.push(`squeeze ${pct(e.squeeze)}`);
+  if (e.sway > 0) words.push(`sway ${pct(e.sway)}`);
+  if (e.swing > 0) words.push(`swing ${pct(e.swing)}`);
+  if (track.filterWobble) words.push(`filter wobble ${wobbleRateWords(track.filterWobble.rate)}, depth ${pct(track.filterWobble.depth)}`);
   if (track.arp) words.push(`arpeggiator ${track.arp.style}, ${arpRateWords(track.arp.rate)}, ${plural(track.arp.octaves, "octave")}`);
   if (track.harmony) words.push(`harmoniser ${track.harmony.style} at ${pct(track.harmony.amount)}`);
   for (const p of AUTO_PARAMS) {
@@ -250,8 +257,8 @@ const NOTE_SCHEMA = {
 };
 const FILTER_SCHEMA = {
   type: "object",
-  description: 'The track\'s filter: {"kind": "low" (cuts the top) or "high" (cuts the bottom), "cutoff": 0–100, "resonance": 0–100}. {"kind": "low", "cutoff": 100} is off.',
-  properties: { kind: { type: "string", enum: ["low", "high"] }, cutoff: { type: "number" }, resonance: { type: "number" } },
+  description: 'The track\'s filter: {"kind": "low" (cuts the top), "high" (cuts the bottom) or "band" (keeps a slice), "cutoff": 0–100, "resonance": 0–100}. {"kind": "low", "cutoff": 100} is off.',
+  properties: { kind: { type: "string", enum: ["low", "high", "band"] }, cutoff: { type: "number" }, resonance: { type: "number" } },
 };
 const SHAPE_PROPS = {
   volume: { type: "number", description: "The clip's own volume, per cent 0–200 (100 = as played)." },
@@ -475,13 +482,18 @@ export const TOOLS: ToolDef[] = [
         bass: { type: "number", description: "−100 to 100: less or more of the low end." },
         treble: { type: "number", description: "−100 to 100: less or more of the top end." },
         chop: { type: "number", description: "Per cent, 0–100: cuts the sound into sixteenth notes (stutters)." },
+        squeeze: { type: "number", description: "Per cent, 0–100: a compressor — evens out loud and quiet, steadier and punchier." },
+        sway: { type: "number", description: "Per cent, 0–100: the sound swings left and right once a bar." },
+        swirl: { type: "number", description: "Per cent, 0–100: a phaser — a slow, sweeping, hollow whoosh." },
+        swing: { type: "number", description: "Per cent, 0–100: off-beat notes come late (100 = a full triplet shuffle). Instrument tracks." },
+        filter_wobble: { description: 'The filter opens and closes in time: {"rate": beats for one wobble — 2, 1, 0.5, 0.333 or 0.25 —, "depth": 0–100}, or null for off.' },
         arpeggiator: { description: 'Chords played one note at a time: {"style": "up" | "down" | "updown" | "random", "rate": "beats" | "eighths" | "triplets" | "sixteenths", "octaves": 1–3}, or null for off.' },
         harmoniser: { description: 'Extra voices at other pitches along with the track: {"voices": "below" (an octave down) | "fifth" (a fifth up) | "major" (third and fifth up: bright) | "minor" (minor third and fifth up: dark) | "wide" (an octave down and up), "volume": 0–100}, or null for off.' },
       },
       required: ["instrument"],
     },
     run(s, a) {
-      noExtras(a, ["instrument", "name", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "harmoniser"], "add_track");
+      noExtras(a, ["instrument", "name", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "harmoniser", "squeeze", "sway", "swirl", "swing", "filter_wobble"], "add_track");
       if (s.song.tracks.length >= MOST_TRACKS) throw new InputError(`A song can have at most ${MOST_TRACKS} tracks. Remove one first, or put this part on a track that's there.`);
       const made = newTrack("instrument", instrumentOf(a.instrument, "instrument"), s.song.tracks);
       const patch = trackPatch(a, "add_track");
@@ -514,6 +526,11 @@ export const TOOLS: ToolDef[] = [
         bass: { type: "number", description: "−100 to 100: less or more of the low end." },
         treble: { type: "number", description: "−100 to 100: less or more of the top end." },
         chop: { type: "number", description: "Per cent, 0–100: cuts the sound into sixteenth notes (stutters)." },
+        squeeze: { type: "number", description: "Per cent, 0–100: a compressor — evens out loud and quiet, steadier and punchier." },
+        sway: { type: "number", description: "Per cent, 0–100: the sound swings left and right once a bar." },
+        swirl: { type: "number", description: "Per cent, 0–100: a phaser — a slow, sweeping, hollow whoosh." },
+        swing: { type: "number", description: "Per cent, 0–100: off-beat notes come late (100 = a full triplet shuffle). Instrument tracks." },
+        filter_wobble: { description: 'The filter opens and closes in time: {"rate": beats for one wobble — 2, 1, 0.5, 0.333 or 0.25 —, "depth": 0–100}, or null for off.' },
         arpeggiator: { description: 'Chords played one note at a time: {"style": "up" | "down" | "updown" | "random", "rate": "beats" | "eighths" | "triplets" | "sixteenths", "octaves": 1–3}, or null for off.' },
         harmoniser: { description: 'Extra voices at other pitches along with the track: {"voices": "below" (an octave down) | "fifth" (a fifth up) | "major" (third and fifth up: bright) | "minor" (minor third and fifth up: dark) | "wide" (an octave down and up), "volume": 0–100}, or null for off.' },
         mute: { type: "boolean" },
@@ -522,7 +539,7 @@ export const TOOLS: ToolDef[] = [
       required: ["track"],
     },
     run(s, a) {
-      noExtras(a, ["track", "name", "instrument", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "harmoniser", "mute", "solo"], "edit_track");
+      noExtras(a, ["track", "name", "instrument", "volume", "pan", "reverb", "echo", "drive", "crush", "filter", "wobble", "pump", "bass", "treble", "chop", "arpeggiator", "harmoniser", "squeeze", "sway", "swirl", "swing", "filter_wobble", "mute", "solo"], "edit_track");
       const track = trackOf(s.song, a.track, "edit_track");
       const patch: edits.TrackPatch = trackPatch(a, "edit_track");
       if (a.instrument !== undefined) {
@@ -864,7 +881,7 @@ function trackPatch(a: Obj, where: string): edits.TrackPatch {
   if (reverb !== undefined) patch.reverb = reverb;
   const echo = share(a.echo, `${where}.echo`);
   if (echo !== undefined) patch.echo = echo;
-  for (const [given, key] of [["drive", "drive"], ["crush", "crush"], ["wobble", "chorus"], ["pump", "pump"], ["chop", "chop"]] as const) {
+  for (const [given, key] of [["drive", "drive"], ["crush", "crush"], ["wobble", "chorus"], ["pump", "pump"], ["chop", "chop"], ["squeeze", "squeeze"], ["sway", "sway"], ["swirl", "swirl"], ["swing", "swing"]] as const) {
     const amount = share(a[given], `${where}.${given}`);
     if (amount !== undefined) patch[key] = amount;
   }
@@ -882,6 +899,21 @@ function trackPatch(a: Obj, where: string): edits.TrackPatch {
     if (g.octaves !== undefined) arp.octaves = num(g.octaves, `${where}.arpeggiator.octaves`, { min: 1, max: 3, integer: true });
     patch.arp = arp;
   }
+  if (a.filter_wobble === null) patch.filterWobble = null;
+  else if (a.filter_wobble !== undefined) {
+    const g = object(a.filter_wobble, `${where}.filter_wobble`);
+    noExtras(g, ["rate", "depth"], `${where}.filter_wobble`);
+    const wobble: NonNullable<edits.TrackPatch["filterWobble"]> = {};
+    if (g.rate !== undefined) {
+      const rate = num(g.rate, `${where}.filter_wobble.rate`, { min: 0.2, max: 2 });
+      const match = WOBBLE_RATES.find((r) => Math.abs(r - rate) < 0.02);
+      if (match === undefined) throw new InputError(`${where}.filter_wobble.rate should be 2, 1, 0.5, 0.333 or 0.25 (beats for one wobble).`);
+      wobble.rate = match;
+    }
+    const depth = share(g.depth, `${where}.filter_wobble.depth`);
+    if (depth !== undefined) wobble.depth = depth;
+    patch.filterWobble = wobble;
+  }
   if (a.harmoniser === null) patch.harmony = null;
   else if (a.harmoniser !== undefined) {
     const g = object(a.harmoniser, `${where}.harmoniser`);
@@ -896,7 +928,7 @@ function trackPatch(a: Obj, where: string): edits.TrackPatch {
     const f = object(a.filter, `${where}.filter`);
     noExtras(f, ["kind", "cutoff", "resonance"], `${where}.filter`);
     const filter: NonNullable<edits.TrackPatch["filter"]> = {};
-    if (f.kind !== undefined) filter.kind = oneOf(f.kind, ["low", "high"] as const, `${where}.filter.kind`);
+    if (f.kind !== undefined) filter.kind = oneOf(f.kind, ["low", "high", "band"] as const, `${where}.filter.kind`);
     const cutoff = share(f.cutoff, `${where}.filter.cutoff`);
     if (cutoff !== undefined) filter.cutoff = cutoff;
     const resonance = share(f.resonance, `${where}.filter.resonance`);

@@ -6,6 +6,22 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.6 — Acoustic instruments, more effects and swing
+
+- **Six acoustic instruments**, under a new *Acoustic* heading: **Acoustic guitar**, **Harp**, **Kalimba** (thumb
+  piano), **Marimba**, **Flute** and **Brass**. MIDI files with these instruments in them now open on them too.
+- **More effects on every track**: **Squeeze** (evens out loud and quiet so a track sits steady and punchy — a
+  compressor), **Swirl** (a slow, sweeping, hollow whoosh — a phaser) and **Sway** (the sound swings from left to
+  right and back, once a bar — lovely in headphones).
+- **Swing** on instrument tracks: notes on the off-beats come a little late, for a shuffle or a groove, right up to
+  a full triplet feel. It swings in eighths, or in sixteenths when a clip has notes on them. The notes you wrote
+  stay where they are.
+- **The filter can keep the middle**: besides cutting the top or the bottom, it can keep just a slice of the sound,
+  like a telephone or a small radio.
+- **Filter wobble**: the filter opens and closes in time with the song — from a slow throb every two beats to the
+  "wub-wub" of dubstep four times a beat.
+- Claude can use all of it.
+
 ## v0.5 — Automation and a harmoniser
 
 - **Automation**: a new **Automation** tab under the tracks (next to the Mixer) where you draw lines over the whole

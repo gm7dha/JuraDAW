@@ -44,6 +44,20 @@ export const ICONS = {
   pluck: svg(
     `<path d="M6 12h36M6 36h36" opacity="0.5"/><path d="M6 24h7M35 24h7"/><path d="M24 37c-2 0-9-11-9-17a9 9 0 0 1 18 0c0 6-7 17-9 17z"/>`,
   ),
+  /** An acoustic guitar. */
+  guitar: svg(
+    `<path d="M29 19l11-11M37 6l5 5"/><path d="M27 21c-3-3-8-3-10 0-1.5 2-1 4-3 5.5-3 2-7 2-8.5 5.5-2 4 1 9.5 5 10.5 3.5 1 6.5-.5 8.5-3 1.5-2 1.5-5 3.5-6.5 3-2.5 7-.5 7-4.5 0-3-1-5-2.5-6.5z"/><circle cx="20.5" cy="27.5" r="2.6"/>`,
+  ),
+  /** A harp. */
+  harp: svg(`<path d="M12 42V8c8 0 12 6 16 12s9 9 12 10v4"/><path d="M12 42h28v-8"/><path d="M18 11v31M24 15v27M30 22v20M35 28v14" opacity="0.6"/>`),
+  /** A kalimba: a board with tines of different lengths. */
+  kalimba: svg(`<rect x="8" y="10" width="32" height="30" rx="5"/><path d="M14 14v14M19 14v18M24 14v20M29 14v18M34 14v14"/><circle cx="24" cy="36" r="1.6"/>`),
+  /** Marimba bars and a mallet. */
+  marimba: svg(`<path d="M6 16h7v18H6zM16 16h7v15h-7zM26 16h7v12h-7zM36 16h6v9h-6z"/><path d="M30 40l10-8"/><circle cx="41.5" cy="31" r="2.5"/>`),
+  /** A flute. */
+  flute: svg(`<path d="M5 30 41 14l3 5L8 35z"/><circle cx="20" cy="26" r="1.3" fill="currentColor"/><circle cx="26" cy="23.4" r="1.3" fill="currentColor"/><circle cx="32" cy="20.8" r="1.3" fill="currentColor"/><path d="M12 30.5l2 2"/>`),
+  /** A trumpet. */
+  brass: svg(`<path d="M6 22h22l10-8v20l-10-8H6z"/><path d="M14 22v-5M18 22v-5M22 22v-5"/><path d="M10 26v6h14v-6"/>`),
   /** A bell. */
   bells: svg(
     `<path d="M24 6v3"/><path d="M11 34c3-3 4-7 4-13a9 9 0 0 1 18 0c0 6 1 10 4 13z"/><path d="M20.5 39a3.6 3.6 0 0 0 7 0"/><path d="M40 12c1.5 2 2.5 4.5 2.5 7M8 12c-1.5 2-2.5 4.5-2.5 7"/>`,

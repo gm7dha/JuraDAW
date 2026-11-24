@@ -4,7 +4,7 @@
  * helpers for looping and for knowing where the song ends. Both the live
  * player and the mixdown ask these the same questions.
  */
-import { arpNotes } from "../model/shaping";
+import { arpNotes, swingDelay, swingsInSixteenths } from "../model/shaping";
 import type { Arp, Loop, Song } from "../model/types";
 import { MIN_LENGTH } from "../model/types";
 import { beatsToSeconds, secondsToBeats } from "./shared";
@@ -81,6 +81,7 @@ export function notesBetween(song: Song, fromBeat: number, toBeat: number, optio
   const until = Math.min(toBeat, cutAt);
   const tracks = tracksToPlay(song, "instrument", options.everyTrack);
   const arps = new Map(song.tracks.filter((t) => t.arp).map((t) => [t.id, t.arp as Arp]));
+  const swings = new Map(song.tracks.filter((t) => (t.swing ?? 0) > 0).map((t) => [t.id, t.swing as number]));
   const events: NoteEvent[] = [];
   for (const clip of song.clips) {
     if (clip.kind !== "midi" || !tracks.has(clip.trackId)) continue;
@@ -88,13 +89,19 @@ export function notesBetween(song: Song, fromBeat: number, toBeat: number, optio
     if (clipEnd <= fromBeat || clip.start >= until) continue;
     // On a track with an arpeggiator, held chords become notes one at a time.
     const arp = arps.get(clip.trackId);
-    for (const note of arp ? arpNotes(clip, arp) : clip.notes) {
+    const notes = arp ? arpNotes(clip, arp) : clip.notes;
+    // Swing: off-beat notes a little late (in sixteenths when the clip has notes on them, else in eighths).
+    const swing = swings.get(clip.trackId) ?? 0;
+    const sixteenths = swing > 0 && swingsInSixteenths(notes);
+    for (const note of notes) {
       if (note.start < 0 || note.start >= clip.length) continue;
-      const beat = clip.start + note.start;
-      if (beat < fromBeat || beat >= until) continue;
+      const written = clip.start + note.start;
+      if (written < fromBeat || written >= until) continue;
+      const late = swing > 0 ? swingDelay(written, swing, sixteenths) : 0;
+      const beat = written + late;
       const lengthBeats = Math.min(note.length, clipEnd - beat, cutAt - beat);
       if (!(lengthBeats > 0)) continue;
-      events.push({ trackId: clip.trackId, pitch: note.pitch, velocity: note.velocity, beat, lengthBeats, clipId: clip.id, clipBeat: note.start });
+      events.push({ trackId: clip.trackId, pitch: note.pitch, velocity: note.velocity, beat, lengthBeats, clipId: clip.id, clipBeat: note.start + late });
     }
   }
   return events.sort((a, b) => a.beat - b.beat || a.pitch - b.pitch);

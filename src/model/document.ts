@@ -5,7 +5,7 @@
  * the browser.
  */
 import { cleanAutomation } from "./automation";
-import { cleanArp, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
+import { cleanArp, cleanFilterWobble, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, TRACK_COLOURS } from "./types";
 import type { AudioClip, AudioInfo, Clip, Loop, MidiClip, Note, Song, Track, TrackKind } from "./types";
 
@@ -81,6 +81,12 @@ const INSTRUMENT_LABELS: Record<string, string> = {
   "drums-808": "808 kit",
   "drums-electro": "Electronic kit",
   "bass-808": "808 bass",
+  guitar: "Acoustic guitar",
+  harp: "Harp",
+  kalimba: "Kalimba",
+  marimba: "Marimba",
+  flute: "Flute",
+  brass: "Brass",
 };
 
 /** The instruments that are drum kits (each key a different drum, as DRUM_PITCHES in time.ts). */
@@ -184,7 +190,7 @@ function parseTrack(v: unknown, taken: Set<string>, before: readonly Track[]): T
 }
 
 /** A track's own effects from a file: only the ones that are switched on are kept. */
-type Extras = "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp" | "automation" | "harmony";
+type Extras = "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp" | "automation" | "harmony" | "squeeze" | "sway" | "swirl" | "swing" | "filterWobble";
 function parseEffects(v: Record<string, unknown>): Pick<Track, Extras> {
   const out: Pick<Track, Extras> = {};
   for (const key of ["lows", "highs"] as const) {
@@ -199,7 +205,9 @@ function parseEffects(v: Record<string, unknown>): Pick<Track, Extras> {
   if (harmony) out.harmony = harmony;
   const automation = cleanAutomation(v.automation);
   if (automation) out.automation = automation;
-  for (const key of ["drive", "crush", "chorus", "pump", "chop"] as const) {
+  const filterWobble = cleanFilterWobble(v.filterWobble);
+  if (filterWobble) out.filterWobble = filterWobble;
+  for (const key of ["drive", "crush", "chorus", "pump", "chop", "squeeze", "sway", "swirl", "swing"] as const) {
     const amount = within(v[key], 0, 1, 0);
     if (amount > 0) out[key] = amount;
   }

@@ -4,14 +4,14 @@
  * and the curves the mixer makes from them (src/audio/mixer.ts).
  */
 import { describe, expect, it } from "vitest";
-import { crushCurve, crushSteps, driveCurve, driveTrim, harmonySweep, resonanceQ } from "../src/audio/mixer";
+import { crushCurve, crushSteps, driveCurve, driveTrim, harmonySweep, resonanceQ, squeezeSettings } from "../src/audio/mixer";
 import { INSTRUMENTS } from "../src/audio/instruments";
 import { BASS_INSTRUMENTS, LIBRARY, patternSuitsInstrument } from "../src/library/catalogue";
 import { instrumentLabel, isDrumKit, newSong, newTrack, parseSong, readSongFile, songFileText } from "../src/model/document";
 import { mirroredOffset } from "../src/audio/reverse";
 import { notesBetween } from "../src/audio/schedule";
 import * as edits from "../src/model/edits";
-import { CUTOFF_HIGH_HZ, CUTOFF_LOW_HZ, DEFAULT_ARP, cleanHarmony, harmonySteps, stepRatio, arpNotes, chopFloor, cleanArp, toneWords, clipFades, clipGain, clipIsShaped, clipLevelAt, clipLevelPoints, cleanFilter, cutoffHz, effectsOf, filterIsOn, hasEffects, hzText, pumpFloor, sweepAt, trackHasSweeps } from "../src/model/shaping";
+import { CUTOFF_HIGH_HZ, CUTOFF_LOW_HZ, DEFAULT_ARP, cleanFilterWobble, swingDelay, swingsInSixteenths, wobbledCutoff, cleanHarmony, harmonySteps, stepRatio, arpNotes, chopFloor, cleanArp, toneWords, clipFades, clipGain, clipIsShaped, clipLevelAt, clipLevelPoints, cleanFilter, cutoffHz, effectsOf, filterIsOn, hasEffects, hzText, pumpFloor, sweepAt, trackHasSweeps } from "../src/model/shaping";
 import type { MidiClip, Song } from "../src/model/types";
 
 function songWith(): { song: Song; track: string; clip: string } {
@@ -28,7 +28,7 @@ describe("a track's own effects", () => {
   it("are all off on a new track, and a track that leaves them out", () => {
     const { song, track } = songWith();
     const t = trackOf(song, track);
-    expect(effectsOf(t)).toEqual({ drive: 0, crush: 0, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0, lows: 0, highs: 0, chop: 0 });
+    expect(effectsOf(t)).toEqual({ drive: 0, crush: 0, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0, lows: 0, highs: 0, chop: 0, squeeze: 0, sway: 0, swirl: 0, swing: 0 });
     expect(hasEffects(t)).toBe(false);
     expect("drive" in t || "filter" in t).toBe(false);
   });
@@ -36,7 +36,7 @@ describe("a track's own effects", () => {
   it("are kept inside their limits, and left out of the track again when turned right down", () => {
     const { song, track } = songWith();
     let s = edits.updateTrack(song, track, { drive: 0.4, crush: 7, chorus: 0.25, pump: -1, filter: { cutoff: 0.5 } });
-    expect(effectsOf(trackOf(s, track))).toEqual({ drive: 0.4, crush: 1, filter: { kind: "low", cutoff: 0.5, resonance: 0 }, chorus: 0.25, pump: 0, lows: 0, highs: 0, chop: 0 });
+    expect(effectsOf(trackOf(s, track))).toEqual({ drive: 0.4, crush: 1, filter: { kind: "low", cutoff: 0.5, resonance: 0 }, chorus: 0.25, pump: 0, lows: 0, highs: 0, chop: 0, squeeze: 0, sway: 0, swirl: 0, swing: 0 });
     expect(hasEffects(trackOf(s, track))).toBe(true);
     // Only part of the filter changes at a time.
     s = edits.updateTrack(s, track, { filter: { resonance: 0.3 } });
@@ -144,7 +144,7 @@ describe("in files", () => {
     const read = readSongFile(songFileText(s));
     expect(read.ok && read.song).toEqual(s);
     const odd = parseSong({ ...s, tracks: [{ ...s.tracks[0], drive: "lots", crush: 5, pump: NaN, filter: { kind: "sideways", cutoff: 4, resonance: -1 }, chorus: null }], clips: [{ ...s.clips[0], gain: 99, fadeIn: -2, fadeOut: "x", sweep: { from: "a", to: 1 } }] })!;
-    expect(effectsOf(odd.tracks[0])).toEqual({ drive: 0, crush: 1, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0, lows: 0, highs: 0, chop: 0 });
+    expect(effectsOf(odd.tracks[0])).toEqual({ drive: 0, crush: 1, filter: { kind: "low", cutoff: 1, resonance: 0 }, chorus: 0, pump: 0, lows: 0, highs: 0, chop: 0, squeeze: 0, sway: 0, swirl: 0, swing: 0 });
     expect(odd.clips[0]).toMatchObject({ gain: 2 });
     expect(odd.clips[0].fadeIn).toBeUndefined();
     expect(odd.clips[0].fadeOut).toBeUndefined();
@@ -362,5 +362,70 @@ describe("the harmoniser", () => {
     expect(cleanHarmony({ style: "sixth", amount: 3 })).toEqual({ style: "below", amount: 1 });
     expect(cleanHarmony({ style: "fifth", amount: 0 })).toBeUndefined();
     expect(cleanHarmony("loud")).toBeUndefined();
+  });
+});
+
+describe("v0.6: squeeze, sway, swirl, swing, the band filter and the filter wobble", () => {
+  it("are off on a new track, turned up and right down again (gone from the track)", () => {
+    const { song, track } = songWith();
+    for (const key of ["squeeze", "sway", "swirl", "swing"] as const) {
+      expect(effectsOf(trackOf(song, track))[key]).toBe(0);
+      const on = edits.updateTrack(song, track, { [key]: 0.4 });
+      expect(trackOf(on, track)[key]).toBe(0.4);
+      expect(hasEffects(trackOf(on, track))).toBe(true);
+      expect(key in trackOf(edits.updateTrack(on, track, { [key]: 0 }), track)).toBe(false);
+    }
+  });
+  it("has a band filter that always changes the sound", () => {
+    const band = cleanFilter({ kind: "band" });
+    expect(band).toEqual({ kind: "band", cutoff: 0.5, resonance: 0 });
+    expect(filterIsOn(band)).toBe(true);
+    const { song, track } = songWith();
+    expect(trackOf(edits.updateTrack(song, track, { filter: { kind: "band", cutoff: 0.3 } }), track).filter).toEqual({ kind: "band", cutoff: 0.3, resonance: 0 });
+  });
+  it("has a filter wobble in time with the song", () => {
+    const { song, track } = songWith();
+    const on = edits.updateTrack(song, track, { filterWobble: { rate: 1 } });
+    expect(trackOf(on, track).filterWobble).toEqual({ rate: 1, depth: 0.6 });
+    expect("filterWobble" in trackOf(edits.updateTrack(on, track, { filterWobble: null }), track)).toBe(false);
+    expect(cleanFilterWobble({ rate: 7, depth: 2 })).toEqual({ rate: 0.5, depth: 1 });
+    expect(cleanFilterWobble({ rate: 1, depth: 0 })).toBeUndefined();
+    const w = { rate: 1, depth: 1 };
+    // Open where the track has it on the beat, most closed half way between.
+    expect(wobbledCutoff(0.9, w, 4, "low")).toBeCloseTo(0.9);
+    expect(wobbledCutoff(0.9, w, 4.5, "low")).toBeCloseTo(0.1);
+    expect(wobbledCutoff(0.2, w, 4.5, "high")).toBeCloseTo(1);
+  });
+  it("swings off-beat notes late, eighths or sixteenths", () => {
+    expect(swingDelay(3, 1, false)).toBe(0);
+    expect(swingDelay(3.5, 1, false)).toBeCloseTo(1 / 6);
+    expect(swingDelay(3.5, 0.5, false)).toBeCloseTo(1 / 12);
+    expect(swingDelay(3.25, 1, false)).toBe(0);
+    expect(swingDelay(3.25, 1, true)).toBeCloseTo(1 / 12);
+    expect(swingDelay(3.5, 1, true)).toBe(0);
+    expect(swingsInSixteenths([{ start: 0 }, { start: 0.5 }])).toBe(false);
+    expect(swingsInSixteenths([{ start: 0 }, { start: 0.75 }])).toBe(true);
+    const { song, track, clip } = songWith();
+    const c = clipOf(song, clip) as MidiClip;
+    const eighths = edits.updateClip(song, clip, {});
+    const withNotes = { ...eighths, clips: [{ ...c, notes: edits.makeNotes([0, 0.5, 1, 1.5].map((start) => ({ pitch: 60, start, length: 0.5, velocity: 90 }))) }] };
+    const swung = edits.updateTrack(withNotes, track, { swing: 1 });
+    expect(notesBetween(withNotes, 0, 20).map((n) => n.beat - c.start)).toEqual([0, 0.5, 1, 1.5]);
+    const beats = notesBetween(swung, 0, 20).map((n) => n.beat - c.start);
+    expect(beats[1]).toBeCloseTo(0.5 + 1 / 6);
+    expect(beats[2]).toBe(1);
+  });
+  it("squeezes harder the further it's turned up", () => {
+    expect(squeezeSettings(0).ratio).toBe(2);
+    expect(squeezeSettings(1).threshold).toBeLessThan(squeezeSettings(0.5).threshold);
+  });
+  it("are saved and read back carefully", () => {
+    const { song, track } = songWith();
+    const s = edits.updateTrack(song, track, { squeeze: 0.3, sway: 0.4, swirl: 0.5, swing: 0.6, filter: { kind: "band", cutoff: 0.4 }, filterWobble: { rate: 0.25, depth: 0.7 } });
+    const read = parseSong(JSON.parse(songFileText(s)).song)!.tracks[0];
+    expect(read).toMatchObject({ squeeze: 0.3, sway: 0.4, swirl: 0.5, swing: 0.6, filter: { kind: "band", cutoff: 0.4 }, filterWobble: { rate: 0.25, depth: 0.7 } });
+    const odd = parseSong({ ...JSON.parse(songFileText(s)).song, tracks: [{ ...read, squeeze: "lots", filterWobble: { rate: "x" } }] })!.tracks[0];
+    expect("squeeze" in odd).toBe(false);
+    expect("filterWobble" in odd).toBe(false);
   });
 });
