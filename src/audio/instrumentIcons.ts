@@ -58,6 +58,24 @@ export const ICONS = {
   flute: svg(`<path d="M5 30 41 14l3 5L8 35z"/><circle cx="20" cy="26" r="1.3" fill="currentColor"/><circle cx="26" cy="23.4" r="1.3" fill="currentColor"/><circle cx="32" cy="20.8" r="1.3" fill="currentColor"/><path d="M12 30.5l2 2"/>`),
   /** A trumpet. */
   brass: svg(`<path d="M6 22h22l10-8v20l-10-8H6z"/><path d="M14 22v-5M18 22v-5M22 22v-5"/><path d="M10 26v6h14v-6"/>`),
+  /** Vibraphone bars with a fan's spin under them. */
+  vibraphone: svg(`<path d="M6 12h8v20H6zM17 12h8v16h-8zM28 12h8v12h-8z"/><path d="M38 12h4v8h-4z"/><circle cx="24" cy="39" r="4"/><path d="M24 35v8M20 39h8" opacity="0.6"/>`),
+  /** A music box with its crank. */
+  "music-box": svg(`<rect x="7" y="18" width="28" height="20" rx="2"/><path d="M7 24h28"/><path d="M35 28h5v-6"/><circle cx="40" cy="20" r="2"/><path d="M14 12l3 4M21 9v6M28 12l-3 4" opacity="0.6"/>`),
+  /** A steel pan, seen from above. */
+  "steel-drum": svg(`<ellipse cx="24" cy="22" rx="17" ry="12"/><circle cx="24" cy="22" r="4"/><circle cx="15" cy="20" r="3"/><circle cx="33" cy="20" r="3"/><circle cx="24" cy="13" r="2.5"/><path d="M8 24v8c0 6 8 10 16 10s16-4 16-10v-8"/>`),
+  /** A clavinet: a keyboard with a spiky wave. */
+  clavinet: svg(`<rect x="5" y="22" width="38" height="16" rx="2.5"/><path d="M12 30v8M18 30v8M24 30v8M30 30v8M36 30v8"/><path d="M8 14l5-5 3 8 4-8 3 8 4-8 3 8 4-8 3 8 4-5"/>`),
+  /** An accordion. */
+  accordion: svg(`<rect x="6" y="12" width="8" height="26" rx="2"/><rect x="34" y="12" width="8" height="26" rx="2"/><path d="M14 14l5 4-5 4 5 4-5 4 5 4-5 4M34 14l-5 4 5 4-5 4 5 4-5 4 5 4M19 18h10M19 26h10M19 34h10"/>`),
+  /** A cello and its bow. */
+  cello: svg(`<path d="M24 4v10"/><path d="M24 14c-5 0-7 4-6 7 1 2-4 3-4 9 0 7 5 12 10 12s10-5 10-12c0-6-5-7-4-9 1-3-1-7-6-7z"/><path d="M21 26h6M24 22v14"/><path d="M8 40 40 12" opacity="0.6"/>`),
+  /** Glass: a sparkle in a pane. */
+  "glass-pad": svg(`<rect x="8" y="8" width="32" height="32" rx="4"/><path d="M24 14v20M14 24h20M17 17l14 14M31 17 17 31" opacity="0.7"/><path d="M12 36l8-8" opacity="0.4"/>`),
+  /** Chiptune: an old games controller. */
+  chiptune: svg(`<rect x="5" y="15" width="38" height="20" rx="6"/><path d="M13 21v8M9 25h8"/><circle cx="31" cy="27" r="2.2"/><circle cx="36" cy="23" r="2.2"/>`),
+  /** Your own sound: three knobs. */
+  custom: svg(`<rect x="5" y="9" width="38" height="30" rx="4"/><circle cx="15" cy="21" r="4"/><circle cx="33" cy="21" r="4"/><path d="M15 21l2-3M33 21l-3-1"/><path d="M11 32h26" opacity="0.6"/><circle cx="24" cy="32" r="2" fill="currentColor"/>`),
   /** A bell. */
   bells: svg(
     `<path d="M24 6v3"/><path d="M11 34c3-3 4-7 4-13a9 9 0 0 1 18 0c0 6 1 10 4 13z"/><path d="M20.5 39a3.6 3.6 0 0 0 7 0"/><path d="M40 12c1.5 2 2.5 4.5 2.5 7M8 12c-1.5 2-2.5 4.5-2.5 7"/>`,

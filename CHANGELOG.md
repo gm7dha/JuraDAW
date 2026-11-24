@@ -6,6 +6,19 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.9 — Your own sound, and eight more instruments
+
+- **Your own sound**: a new instrument (under Synths) that you shape yourself — JuraDAW's own take on a synth plugin.
+  Start from **Warm pad**, **Lead**, **Pluck**, **Deep bass**, **Whistle** or **Retro beep**, choose the wave
+  (**Smooth**, **Soft**, **Hollow** or **Bright**), then change **Brightness**, **Fade in**, **Hold**, **Ring on**,
+  **Thickness**, a **Bass layer** an octave below and **Vibrato**. Each track playing it keeps its own settings, saved
+  with the song.
+- **Eight more instruments**: **Vibraphone**, **Music box** and **Steel drum** (Acoustic), **Clavinet** and
+  **Accordion** (Keys), **Cello** and **Glass pad** (Strings and pads) and **Chiptune** — the beeps of old games
+  consoles (Synths). MIDI files with these instruments in them open on them.
+- After dragging a slider, Space now plays and stops the song again straight away.
+- Claude can use all of it, and shape Your own sound too.
+
 ## v0.8 — Recent songs
 
 - **Recent**: a new button in the top bar lists the last 12 songs you've worked on in this browser, newest first,

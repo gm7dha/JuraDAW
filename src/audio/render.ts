@@ -8,7 +8,7 @@ import type { Clip, Song, Track } from "../model/types";
 import { fadeNode, shapedInput } from "./clipLevel";
 import { clipSource } from "./reverse";
 import type { Sound } from "./audioStore";
-import { instrumentById } from "./instruments";
+import { instrumentFor } from "./instruments";
 import { LIMITER_DELAY, Mixer, echoSeconds } from "./mixer";
 import { audibleTracks, audioClipsBetween, notesBetween, songLengthBeats } from "./schedule";
 import { beatsToSeconds, clamp, secondsToBeats } from "./shared";
@@ -100,7 +100,7 @@ export async function renderSong(song: Song, sound: (audioId: string) => Sound |
       const clip = clips.get(note.clipId);
       const shaped = clip && clip.kind === "midi" ? shapedInput(ctx, input, clip, clip.length, note.clipBeat, note.clipBeat + note.lengthBeats, (beat) => timeOf(clip.start + beat)) : null;
       const length = beatsToSeconds(note.lengthBeats, song.bpm);
-      instrumentById(track.instrument).startVoice(ctx, shaped ?? input, note.pitch, note.velocity, when, length).stop(when + length);
+      instrumentFor(track).startVoice(ctx, shaped ?? input, note.pitch, note.velocity, when, length).stop(when + length);
     }
     // The pump's dips and the filter sweeps, in time with the song (up to where the mixdown ends: the tail is left alone).
     if (a < to) mixer.scheduleShaping(song, a, Math.min(b, to), timeOf, clipBeats);

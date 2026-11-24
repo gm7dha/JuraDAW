@@ -94,5 +94,8 @@ files when you Save.
 - **v0.7** — named sections along the ruler, the song's key (shading in the note editor) and chords drawn from it,
   finishing touches on the whole song.
 - **v0.8** — recent songs (with their recordings kept in the browser), loop a section.
+- **v0.9** — Your own sound (a simple synth with presets, shaped in the track's settings) and eight more instruments.
+  Real plugins (VST/AU) can't run in a browser, and web plugins would need code from outside, which JuraDAW doesn't
+  load: Your own sound is its plugin-like instrument instead.
 - **Later** — more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

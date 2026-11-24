@@ -872,6 +872,24 @@ try {
     await until(`engine.level("${shaped.id}") > 0.02`, "the marimba heard through its new effects");
     await page.keyboard.press("Space");
     await until("!s.playing", "playing to stop");
+    // v0.9: the newest instruments, and Your own sound shaped from a starting point.
+    for (const name of ["Vibraphone", "Music box", "Steel drum", "Clavinet", "Accordion", "Cello", "Glass pad", "Chiptune", "Your own sound"]) {
+      expect((await page.locator(`.side-panel button:has-text("${name}")`).count()) >= 1, `"${name}" among the instruments`);
+    }
+    await page.locator('.side-panel .instrument-card:has-text("Your own sound")').click();
+    expect((await trackNow("instrument")) === "custom", "picking Your own sound");
+    await page.waitForSelector(".side-panel .custom-sound");
+    await page.click('.custom-sound .preset-row button:has-text("Warm pad")');
+    expect((await trackNow("sound.fadeIn")) === 0.55 && (await trackNow("sound.wave")) === "bright", "the Warm pad starting point");
+    await page.click('.custom-sound [aria-label="The wave the sound is made from"] button:has-text("Smooth")');
+    await page.locator('.custom-sound input[aria-label="Brightness"]').fill("0.8");
+    expect((await trackNow("sound.wave")) === "smooth" && (await trackNow("sound.brightness")) === 0.8, "the wave and brightness changed");
+    await page.keyboard.press("Space");
+    await until("s.playing", "playing Your own sound");
+    await playedPast(1.5);
+    await until(`engine.level("${shaped.id}") > 0.02`, "Your own sound heard");
+    await page.keyboard.press("Space");
+    await until("!s.playing", "playing to stop");
     // Take it all back, so the rest of the test finds the song as it was.
     const steps = (await get("s.history.past.length")) - 0;
     void steps;

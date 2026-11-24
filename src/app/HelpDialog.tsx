@@ -152,6 +152,10 @@ export function HelpDialog() {
           double-click to rename it, right-click to loop it.
         </li>
         <li>
+          <strong>Your own sound</strong>: pick it among the instruments (under Synths) and shape it in the track's settings — start from a preset such as <em>Warm pad</em> or <em>Lead</em>,
+          choose a wave, then change its brightness, how it fades in and rings on, its thickness, a bass layer and vibrato.
+        </li>
+        <li>
           <strong>Recent</strong>, in the top bar, opens any of the last 12 songs you've worked on in this browser — so New never loses the song you had.
         </li>
         <li>

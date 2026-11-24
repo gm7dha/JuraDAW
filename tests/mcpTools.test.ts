@@ -346,3 +346,18 @@ describe("the song's key, sections and finishing touches", () => {
     expect("key" in s.song || "sections" in s.song || "finish" in s.song).toBe(false);
   });
 });
+
+describe("your own sound and the newest instruments", () => {
+  it("starts from a preset, changes a setting and describes it", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "custom", name: "Mine", sound: { preset: "Warm pad", vibrato: 40 } });
+    expect(s.song.tracks[0].sound).toMatchObject({ wave: "bright", fadeIn: 0.55, vibrato: 0.4 });
+    await ok(s, "edit_track", { track: "Mine", sound: { wave: "smooth" } });
+    expect(s.song.tracks[0].sound?.wave).toBe("smooth");
+    expect(await ok(s, "describe_song")).toMatch(/own sound: smooth wave, brightness 35%/);
+    expect(await bad(s, "edit_track", { track: "Mine", sound: { preset: "Kazoo" } })).toMatch(/preset/);
+    await ok(s, "edit_track", { track: "Mine", sound: null });
+    expect("sound" in s.song.tracks[0]).toBe(false);
+    for (const id of ["vibraphone", "music-box", "steel-drum", "clavinet", "accordion", "cello", "glass-pad", "chiptune"]) await ok(s, "add_track", { instrument: id });
+  });
+});

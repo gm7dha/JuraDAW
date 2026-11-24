@@ -13,6 +13,8 @@ import { Patch } from "./patch";
 import { pluckBuffer } from "./pluck";
 import { clamp, midiToHz, velocityBrightness, velocityGain } from "./shared";
 import { makeVoice, type Voice, type VoiceParts } from "./voice";
+import { CUSTOM_INSTRUMENT, DEFAULT_SOUND, soundNumbers } from "../model/sound";
+import type { CustomSound } from "../model/types";
 
 /** "keys" instruments play pitches; "drums" plays a different drum on each key. */
 export type InstrumentKind = "keys" | "drums";
@@ -679,6 +681,169 @@ const brass: Recipe = (p, pitch, velocity) => {
   return p.parts(level, 0.1);
 };
 
+// ── v0.9: vibraphone, music box, steel drum, clavinet, accordion, cello, glass pad, chiptune ──
+
+/** Vibraphone: soft metal bars — a pure note with a faint ring above, through a slow wobble in volume (the vibes' fan). */
+const vibraphone: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const decay = clamp(2.6 * Math.pow(2, -(pitch - 60) / 30), 0.6, 4);
+  const mix = p.gain(1);
+  p.osc("sine", f).connect(p.envelope(1, 0.003, 0, decay)).connect(mix);
+  p.osc("sine", f * 4).connect(p.envelope(0.12 * bright * Math.min(1, 1500 / f), 0.002, 0, decay * 0.15)).connect(mix);
+  const tremolo = p.gain(0.8);
+  const fan = p.osc("sine", 5.5);
+  fan.connect(p.gain(0.2)).connect(tremolo.gain);
+  const level = p.gain(LEVEL.vibraphone * velocityGain(velocity));
+  mix.connect(tremolo).connect(level);
+  return p.parts(level, 0.4);
+};
+
+/** Music box: a tiny steel comb — high, bright and short, with a tinkle a little out of tune with the note. */
+const musicBox: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const decay = clamp(1.2 * Math.pow(2, -(pitch - 72) / 24), 0.25, 2);
+  const mix = p.gain(1);
+  p.osc("sine", f).connect(p.envelope(1, 0.001, 0, decay)).connect(mix);
+  p.osc("sine", f * 2.0).connect(p.envelope(0.35, 0.001, 0, decay * 0.4)).connect(mix);
+  p.osc("sine", f * 5.1).connect(p.envelope(0.18 * velocityBrightness(velocity) * Math.min(1, 2500 / f), 0.001, 0, 0.06)).connect(mix);
+  const level = p.gain(LEVEL["music-box"] * velocityGain(velocity));
+  mix.connect(level);
+  return p.parts(level, 0.3);
+};
+
+/** Steel drum: a hammered steel pan — the note, its octave and a twelfth ringing with it, and a quick metallic attack. */
+const steelDrum: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const decay = clamp(0.9 * Math.pow(2, -(pitch - 60) / 24), 0.2, 1.5);
+  const mix = p.gain(1);
+  p.osc("sine", f).connect(p.envelope(1, 0.002, 0, decay)).connect(mix);
+  p.osc("sine", f * 2).connect(p.envelope(0.45 * bright, 0.002, 0, decay * 0.6)).connect(mix);
+  p.osc("sine", f * 3).connect(p.envelope(0.25 * bright * Math.min(1, 2000 / f), 0.002, 0, decay * 0.3)).connect(mix);
+  // The strike: one sine bending the other, briefly.
+  const main = p.osc("sine", f * 1.0);
+  const bend = p.osc("sine", f * 2.76);
+  const depth = p.gain(0);
+  depth.gain.setValueAtTime(f * 2 * bright, p.start);
+  depth.gain.setTargetAtTime(0, p.start, 0.03);
+  bend.connect(depth).connect(main.frequency);
+  main.connect(p.envelope(0.3, 0.001, 0, 0.08)).connect(mix);
+  const level = p.gain(LEVEL["steel-drum"] * velocityGain(velocity));
+  mix.connect(level);
+  return p.parts(level, 0.2);
+};
+
+/** Clavinet: a funky, plucked keyboard — a thin buzzy wave through a filter that snaps shut. */
+const clavinet: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const bright = velocityBrightness(velocity);
+  const t = p.start;
+  const wave = p.wave("clav", Array.from({ length: 24 }, (_, i) => ((i + 1) % 4 === 0 ? 0.2 : 1) / (i + 1)));
+  const tone = p.filter("bandpass", Math.min(f * 4, 9000), 1.4);
+  tone.frequency.setValueAtTime(Math.min(f * (3 + 6 * bright), 12000), t);
+  tone.frequency.setTargetAtTime(Math.min(f * 2.5, 9000), t, 0.15);
+  const amp = p.envelope(1, 0.002, 0.45, 0.25);
+  const level = p.gain(LEVEL.clavinet * velocityGain(velocity));
+  p.osc(wave, f).connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.05);
+};
+
+/** Accordion: two reeds a little out of tune with each other (its warm "beating"), breathing in through the bellows. */
+const accordion: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const reed = p.wave("reed", Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? 1 : 0.55) / (i + 1)));
+  const tone = p.filter("lowpass", Math.min(f * 6 + 800, 9000), 0.8);
+  const mix = p.gain(0.5);
+  p.osc(reed, f, -7).connect(mix);
+  p.osc(reed, f, 7).connect(mix);
+  const amp = p.envelope(1, 0.05, 0.85, 0.3);
+  const level = p.gain(LEVEL.accordion * velocityGain(velocity));
+  mix.connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.08);
+};
+
+/** Cello: a bowed string — a bright saw softened by the wooden body, swelling in, with a vibrato that comes in late. */
+const cello: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const t = p.start;
+  const bow = p.osc("sawtooth", f);
+  const vibrato = p.osc("sine", 5);
+  const depth = p.gain(0);
+  depth.gain.setValueAtTime(0, t);
+  depth.gain.linearRampToValueAtTime(0, t + 0.3);
+  depth.gain.linearRampToValueAtTime(12, t + 0.9);
+  vibrato.connect(depth).connect(bow.detune);
+  const body = p.filter("peaking", 280, 1.2);
+  body.gain.value = 5;
+  const tone = p.filter("lowpass", Math.min(f * (3 + 3 * velocityBrightness(velocity)), 7000), 0.7);
+  const amp = p.envelope(1, 0.12, 0.85, 0.4);
+  const level = p.gain(LEVEL.cello * velocityGain(velocity));
+  bow.connect(body).connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.25);
+};
+
+/** Glass pad: glassy and airy — soft waves a little out of tune, a high shimmer, swelling slowly and fading slowly. */
+const glassPad: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const mix = p.gain(0.33);
+  for (const cents of [-9, 0, 9]) p.osc("triangle", f, cents).connect(mix);
+  const shimmer = p.osc("sine", f * 4, 3);
+  shimmer.connect(p.gain(0.08 * Math.min(1, 2000 / f))).connect(mix);
+  const tone = p.filter("lowpass", Math.min(f * 5 + 1500, 12000), 0.6);
+  const amp = p.envelope(1, 0.6, 0.9, 1);
+  const level = p.gain(LEVEL["glass-pad"] * velocityGain(velocity));
+  mix.connect(tone).connect(amp).connect(level);
+  return p.parts(level, 0.8);
+};
+
+/** Chiptune: the square-wave beeps of old games consoles, with the quick pitch flutter they used. */
+const chiptune: Recipe = (p, pitch, velocity) => {
+  const f = midiToHz(pitch);
+  const square = p.wave("chip", Array.from({ length: 31 }, (_, i) => ((i + 1) % 2 === 1 ? 1 / (i + 1) : 0)));
+  const osc = p.osc(square, f);
+  // A little blip of pitch at the start.
+  osc.detune.setValueAtTime(100, p.start);
+  osc.detune.setValueAtTime(0, p.start + 0.03);
+  const amp = p.envelope(1, 0.002, 0.8, 0.2);
+  const level = p.gain(LEVEL.chiptune * velocityGain(velocity));
+  osc.connect(amp).connect(level);
+  return p.parts(level, 0.03);
+};
+
+// ── "Your own sound": a simple synth from a track's own settings (src/model/sound.ts) ──
+
+const WAVE_TYPES: Record<CustomSound["wave"], OscillatorType> = { smooth: "sine", soft: "triangle", hollow: "square", bright: "sawtooth" };
+
+function customRecipe(sound: CustomSound): Recipe {
+  const n = soundNumbers(sound);
+  return (p, pitch, velocity) => {
+    const f = midiToHz(pitch);
+    const t = p.start;
+    const type = WAVE_TYPES[sound.wave];
+    const copies = n.detune > 0.5 ? [-n.detune, 0, n.detune] : [0];
+    const mix = p.gain(n.waveLevel / Math.sqrt(copies.length));
+    const oscs = copies.map((cents) => p.osc(type, f, cents));
+    for (const o of oscs) o.connect(mix);
+    if (n.sub > 0) p.osc("sine", f / 2).connect(p.gain(n.sub)).connect(mix);
+    if (n.vibrato > 0) {
+      const wobble = p.osc("sine", 5.3);
+      const depth = p.gain(0);
+      depth.gain.setValueAtTime(0, t);
+      depth.gain.linearRampToValueAtTime(n.vibrato, t + 0.5);
+      wobble.connect(depth);
+      for (const o of oscs) depth.connect(o.detune);
+    }
+    // Brighter when played harder, as most instruments are.
+    const top = Math.min(f * n.cutoffTimes * (0.6 + 0.6 * velocityBrightness(velocity)), 16000);
+    const tone = p.filter("lowpass", Math.max(top, 60), 0.6);
+    const amp = p.envelope(1, n.attack, n.sustain, n.decay);
+    const level = p.gain(LEVEL.custom * velocityGain(velocity));
+    mix.connect(tone).connect(amp).connect(level);
+    return p.parts(level, n.release);
+  };
+}
+
 const LEVEL = {
   piano: 0.42,
   "electric-piano": 0.32,
@@ -704,6 +869,15 @@ const LEVEL = {
   marimba: 0.4,
   flute: 0.22,
   brass: 0.44,
+  vibraphone: 0.36,
+  "music-box": 0.36,
+  "steel-drum": 0.31,
+  clavinet: 0.64,
+  accordion: 0.36,
+  cello: 0.2,
+  "glass-pad": 0.48,
+  chiptune: 0.19,
+  custom: 0.4,
 };
 
 // ── the list ──
@@ -713,7 +887,7 @@ function keyed(id: keyof typeof LEVEL, name: string, group: string, recipe: Reci
     id,
     name,
     group,
-    icon: ICONS[id],
+    icon: ICONS[id as keyof typeof ICONS],
     kind: "keys",
     startVoice(ctx, destination, pitch, velocity, when, seconds) {
       const patch = new Patch(ctx, Math.max(when, ctx.currentTime));
@@ -728,15 +902,22 @@ export const INSTRUMENTS: Instrument[] = [
   keyed("felt-piano", "Soft piano", "Keys", feltPiano),
   keyed("electric-piano", "Electric piano", "Keys", electricPiano),
   keyed("organ", "Organ", "Keys", organ),
+  keyed("clavinet", "Clavinet", "Keys", clavinet),
+  keyed("accordion", "Accordion", "Keys", accordion),
   keyed("strings", "Strings", "Strings and pads", strings),
   keyed("pad", "Soft pad", "Strings and pads", pad),
   keyed("choir", "Choir", "Strings and pads", choir),
+  keyed("cello", "Cello", "Strings and pads", cello),
+  keyed("glass-pad", "Glass pad", "Strings and pads", glassPad),
   keyed("guitar", "Acoustic guitar", "Acoustic", guitar),
   keyed("harp", "Harp", "Acoustic", harp),
   keyed("kalimba", "Kalimba", "Acoustic", kalimba),
   keyed("marimba", "Marimba", "Acoustic", marimba),
   keyed("flute", "Flute", "Acoustic", flute),
   keyed("brass", "Brass", "Acoustic", brass),
+  keyed("vibraphone", "Vibraphone", "Acoustic", vibraphone),
+  keyed("music-box", "Music box", "Acoustic", musicBox),
+  keyed("steel-drum", "Steel drum", "Acoustic", steelDrum),
   keyed("bass", "Bass guitar", "Bass", bass),
   keyed("synth-bass", "Synth bass", "Bass", synthBass),
   keyed("sub-bass", "Sub bass", "Bass", subBass),
@@ -747,7 +928,9 @@ export const INSTRUMENTS: Instrument[] = [
   keyed("wobble", "Wobbly synth", "Synths", wobble),
   keyed("pluck", "Pluck", "Synths", pluck),
   keyed("bells", "Bells", "Synths", bells),
+  keyed("chiptune", "Chiptune", "Synths", chiptune),
   keyed("sweep", "Noise sweep", "Synths", noiseSweep),
+  keyed("custom", "Your own sound", "Synths", customRecipe(DEFAULT_SOUND)),
   {
     id: "drums",
     name: "Drum kit",
@@ -773,6 +956,23 @@ export const INSTRUMENTS: Instrument[] = [
     startVoice: (ctx, destination, pitch, velocity, when) => playKitDrum("drums-electro", ctx, destination, pitch, velocity, when),
   },
 ];
+
+/** "Your own sound" made from settings, once per settings object. */
+const customs = new WeakMap<CustomSound, Instrument>();
+
+/**
+ * The instrument a track plays: its built-in instrument, or — for "Your own sound" — one made from the track's own
+ * settings. Everything that starts a track's notes asks this.
+ */
+export function instrumentFor(track: { instrument: string; sound?: CustomSound }): Instrument {
+  if (track.instrument !== CUSTOM_INSTRUMENT || !track.sound) return instrumentById(track.instrument);
+  let made = customs.get(track.sound);
+  if (!made) {
+    made = keyed("custom", "Your own sound", "Synths", customRecipe(track.sound));
+    customs.set(track.sound, made);
+  }
+  return made;
+}
 
 /** The instrument with an id; the piano if there's no such instrument (an older or newer file). */
 export function instrumentById(id: string): Instrument {

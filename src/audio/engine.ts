@@ -12,7 +12,7 @@
 import type { AudioInfo, Song, Track } from "../model/types";
 import { forgetSounds, getSound, keepSound, loadSounds, newSoundId, soundPeaks, soundWav, storeSound } from "./audioStore";
 import type { Engine, EngineState, RecordOptions, RecordedTake } from "./engineApi";
-import { instrumentById } from "./instruments";
+import { instrumentFor } from "./instruments";
 import { playClick } from "./metronome";
 import { startMidiInput } from "./midiInput";
 import { Mixer, meterLevel } from "./mixer";
@@ -206,7 +206,7 @@ class WebAudioEngine implements Engine {
     const track = this.instrumentTrack(trackId);
     const input = this.mixer?.input(trackId);
     if (!this.ctx || !track || !input || this.ctx.state !== "running") return null;
-    const voice = instrumentById(track.instrument).startVoice(this.ctx, input, pitch, velocity, this.ctx.currentTime);
+    const voice = instrumentFor(track).startVoice(this.ctx, input, pitch, velocity, this.ctx.currentTime);
     this.liveVoices.add(voice);
     voice.onended = () => this.liveVoices.delete(voice);
     if (this.liveVoices.size > MOST_LIVE_VOICES) {

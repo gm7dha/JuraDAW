@@ -12,9 +12,10 @@ import { INSTRUMENTS, instrumentById } from "../audio/instruments";
 import { AUTO_NAMES, AUTO_PARAMS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
 import { finishOf } from "../model/songParts";
+import { CUSTOM_INSTRUMENT, DEFAULT_SOUND, SOUND_PRESETS, SOUND_WAVES, sameSound, soundOf } from "../model/sound";
 import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, HARMONY_STYLES, WOBBLE_RATES, wobbleRateWords, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
 import { useStore } from "../model/store";
-import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type HarmonyStyle, type Song, type Track } from "../model/types";
+import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type CustomSound, type HarmonyStyle, type Song, type Track } from "../model/types";
 import { hear, playheadBeat } from "./engineApp";
 import { Icons, MarkupIcon } from "./icons";
 import { panWords } from "./Mixer";
@@ -497,6 +498,7 @@ function TrackSettings({ song, track }: { song: Song; track: Track }) {
           <div className="field-label">
             Instrument <span className="muted">— {instrumentById(track.instrument).name}. Click one to hear it.</span>
           </div>
+          {track.instrument === CUSTOM_INSTRUMENT && <CustomSoundSettings track={track} />}
           {groups.map((g) => (
             <div key={g.group}>
               <h4 className="library-group">{g.group}</h4>
@@ -542,6 +544,62 @@ function TrackSettings({ song, track }: { song: Song; track: Track }) {
         </button>
       </div>
     </>
+  );
+}
+
+/** "Your own sound": a simple synth shaped with a few friendly settings, starting from a ready-made one if wanted. */
+function CustomSoundSettings({ track }: { track: Track }) {
+  const s = useStore.getState;
+  const sound = soundOf(track);
+  const play = () => window.setTimeout(() => hear(track.id, 60, 100, 0.8), 30);
+  const pct = (v: number) => percent(v);
+  const row = (label: string, key: Exclude<keyof CustomSound, "wave">, title: string, words?: (v: number) => string) => (
+    <SliderRow label={label} words={(words ?? pct)(sound[key])} value={sound[key]} usual={DEFAULT_SOUND[key]} title={`${title} (double-click for the usual)`} make={(sg, v) => edits.updateTrack(sg, track.id, { sound: { [key]: v } })} />
+  );
+  return (
+    <div className="custom-sound">
+      <p className="panel-hint">Make the sound your own: start from one of these, then change it with the settings below. A click on a key in the Keys panel plays it.</p>
+      <div className="preset-row" role="group" aria-label="Starting points">
+        {SOUND_PRESETS.map((p) => (
+          <button
+            key={p.name}
+            type="button"
+            className={`text-button small-button${sameSound(sound, p.sound) ? " active" : ""}`}
+            onClick={() => {
+              s().updateTrack(track.id, { sound: p.sound });
+              play();
+            }}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+      <div className="segmented four" role="radiogroup" aria-label="The wave the sound is made from">
+        {SOUND_WAVES.map((w) => (
+          <button
+            key={w.wave}
+            type="button"
+            role="radio"
+            aria-checked={sound.wave === w.wave}
+            className={sound.wave === w.wave ? "selected" : ""}
+            title={w.hint}
+            onClick={() => {
+              s().updateTrack(track.id, { sound: { wave: w.wave } });
+              play();
+            }}
+          >
+            {w.name}
+          </button>
+        ))}
+      </div>
+      {row("Brightness", "brightness", "How much of the top of the sound comes through: low is dark and soft, high is bright and buzzy")}
+      {row("Fade in", "fadeIn", "How slowly each note swells in: none for a sharp start, lots for a slow, dreamy one", (v) => (v > 0.02 ? pct(v) : "at once"))}
+      {row("Hold", "hold", "How much of its loudness a note keeps while it's held: low dies away like a plucked string, high holds like an organ")}
+      {row("Ring on", "ringOn", "How long a note rings on after it ends")}
+      {row("Thickness", "thickness", "Copies of the sound a little out of tune with each other: thicker and wider", (v) => (v > 0.02 ? pct(v) : "off"))}
+      {row("Bass layer", "bassLayer", "A pure note an octave below, for weight", (v) => (v > 0.02 ? pct(v) : "off"))}
+      {row("Vibrato", "vibrato", "A gentle wobble in pitch that comes in as the note is held, like a singer's", (v) => (v > 0.02 ? pct(v) : "off"))}
+    </div>
   );
 }
 

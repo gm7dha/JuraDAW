@@ -75,6 +75,15 @@ const PROGRAM_OF: Record<string, number> = {
   marimba: 12,
   flute: 73,
   brass: 61,
+  vibraphone: 11,
+  "music-box": 10,
+  "steel-drum": 114,
+  clavinet: 7,
+  accordion: 21,
+  cello: 42,
+  "glass-pad": 92,
+  chiptune: 80,
+  custom: 81,
 };
 
 /** The nearest of JuraDAW's instruments to a General MIDI one; a piano when nothing is near (or the file doesn't say). */
@@ -85,6 +94,13 @@ export function instrumentForProgram(program: number | null): string {
   if (program === 87) return "growl-bass";
   if (program === 122) return "sweep";
   if (program === 12 || program === 13) return "marimba";
+  if (program === 11) return "vibraphone";
+  if (program === 10) return "music-box";
+  if (program === 114) return "steel-drum";
+  if (program === 7) return "clavinet";
+  if (program === 21 || program === 23) return "accordion";
+  if (program === 42 || program === 43) return "cello";
+  if (program === 92) return "glass-pad";
   if (program === 108) return "kalimba";
   if (program === 46) return "harp";
   if (program >= 24 && program <= 25) return "guitar";
