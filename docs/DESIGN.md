@@ -97,5 +97,8 @@ files when you Save.
 - **v0.9** — Your own sound (a simple synth with presets, shaped in the track's settings) and eight more instruments.
   Real plugins (VST/AU) can't run in a browser, and web plugins would need code from outside, which JuraDAW doesn't
   load: Your own sound is its plugin-like instrument instead.
+- **v0.10** — the step sequencer (Notes / Steps in the note editor).
+- **v0.11 (next)** — the sampler: a recording or sound file played as an instrument on the keys, and chopped
+  onto the drum pads.
 - **Later** — more effects (EQ, compressor), tempo changes, time-stretching
   audio to the tempo, sampled instruments, a link with JuraCAD/JuraCUT.

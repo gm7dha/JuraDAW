@@ -5,7 +5,7 @@
  * rows are the kit's drums by name instead of a piano. Along the bottom, a
  * strip of bars sets how hard each note is played.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { instrumentById } from "../audio/instruments";
 import * as edits from "../model/edits";
@@ -17,6 +17,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useEdgeScroll, type PointerPlace } from "./edgeScroll";
 import { everyFrame, hear, playheadBeat } from "./engineApp";
 import { Icons } from "./icons";
+import { StepGrid } from "./StepGrid";
 import { barBeat, lengthWords, midiClip, noteStep, withNotes } from "./songUi";
 import { gridFor, useZoom } from "./zoom";
 
@@ -43,7 +44,41 @@ type Drag =
 /** The length the next drawn note gets: the last one changed, to begin with one snap step. */
 let lastLength: number | null = null;
 
+/** Which view the editor shows, for drum tracks and for the others: the grid of steps, or the notes (kept on this computer). */
+type EditorView = "notes" | "steps";
+const VIEW_KEY = "juradaw.editorView";
+function keptViews(): { drums: EditorView; keys: EditorView } {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, unknown>;
+    return { drums: v.drums === "notes" ? "notes" : "steps", keys: v.keys === "steps" ? "steps" : "notes" };
+  } catch {
+    return { drums: "steps", keys: "notes" };
+  }
+}
+
+/** Notes / Steps: two ways of seeing the same clip. */
+function ViewSwitch({ view, onChange }: { view: EditorView; onChange: (v: EditorView) => void }) {
+  return (
+    <div className="segmented two view-switch" role="radiogroup" aria-label="How the clip is shown">
+      {(["notes", "steps"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={view === v}
+          className={view === v ? "selected" : ""}
+          onClick={() => onChange(v)}
+          title={v === "notes" ? "Notes: every note as a block you can move and stretch (a piano roll)" : "Steps: a grid of boxes — click one to play a sound on that step (a step sequencer)"}
+        >
+          {v === "notes" ? "Notes" : "Steps"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function PianoRoll() {
+  const [views, setViews] = useState(keptViews);
   const song = useStore((s) => s.history.present);
   const editingClipId = useStore((s) => s.editingClipId);
   const selectedNoteIds = useStore((s) => s.selectedNoteIds);
@@ -63,7 +98,24 @@ export function PianoRoll() {
       </div>
     );
   }
-  return <Roll key={clip.id} song={song} clip={clip} track={track} selectedNoteIds={selectedNoteIds} tool={tool} snap={snap} />;
+  const drums = instrumentById(track.instrument).kind === "drums";
+  const kind = drums ? "drums" : "keys";
+  const switcher = (
+    <ViewSwitch
+      view={views[kind]}
+      onChange={(v) => {
+        const next = { ...views, [kind]: v };
+        setViews(next);
+        try {
+          localStorage.setItem(VIEW_KEY, JSON.stringify(next));
+        } catch {
+          // Kept for this visit only.
+        }
+      }}
+    />
+  );
+  if (views[kind] === "steps") return <StepGrid key={clip.id} song={song} clip={clip} track={track} drums={drums} switcher={switcher} />;
+  return <Roll key={clip.id} song={song} clip={clip} track={track} selectedNoteIds={selectedNoteIds} tool={tool} snap={snap} switcher={switcher} />;
 }
 
 interface RollProps {
@@ -73,6 +125,7 @@ interface RollProps {
   selectedNoteIds: string[];
   tool: ReturnType<typeof useStore.getState>["tool"];
   snap: ReturnType<typeof useStore.getState>["snap"];
+  switcher: ReactNode;
 }
 
 /** Whether each note added in the editor is a whole chord (kept while the page is open). */
@@ -110,7 +163,7 @@ export function KeyPicker({ song, label = false }: { song: Song; label?: boolean
   );
 }
 
-function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
+function Roll({ song, clip, track, selectedNoteIds, tool, snap, switcher }: RollProps) {
   const drums = instrumentById(track.instrument).kind === "drums";
   const [chords, setChordsState] = useState(chordsOn);
   const setChords = (on: boolean) => {
@@ -478,6 +531,7 @@ function Roll({ song, clip, track, selectedNoteIds, tool, snap }: RollProps) {
             {selectedCount ? ` (${selectedCount} selected)` : ""}
           </span>
         </span>
+        {switcher}
         <span className="roll-spring" />
         <span className="muted small roll-hint">{tool === "pencil" ? `Click to add ${chords && !drums ? "a chord" : "a note"}` : `Double-click to add ${chords && !drums ? "a chord" : "a note"}`}</span>
         {!drums && (

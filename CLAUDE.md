@@ -167,6 +167,16 @@
   vibrato}. Real plugins aren't possible here (no VST/AU in a browser, no outside code). Shortcuts: Space plays even
   from a slider that has the focus (only the arrows stay the slider's).
 
+- v0.10 the step sequencer: pure `src/model/steps.ts` (`STEP_CHOICES` sixteenths/eighths/triplets, `STRENGTHS` soft
+  70 / normal 100 / accent 120, `strengthOf`, `nextStrength`, `stepRows` — a drum kit's DRUM_PITCHES, else the key's
+  notes (C major without one) from C3 to C5, plus any other pitch the clip holds —, `stepCount`, `notesInStep` — a note
+  starting anywhere in the box —, `setStep`, `setStepStrength`, `stepsToNotes`/`rowLetters` in the library's
+  X/x/o/g letters). `src/app/StepGrid.tsx` (boxes as absolutely placed divs, `data-step="pitch:index"`; a press picks
+  on/off from the first box and paints along — one undo step through dragStart/dragUpdate/dragEnd —; Shift-click
+  cycles the strength; names hear their sound; playhead each frame). PianoRoll's `ViewSwitch` (Notes / Steps) in both
+  bars, kept per kind in localStorage `juradaw.editorView` (drums open in Steps, the rest in Notes). Claude:
+  add_notes takes `steps` {pitch or drum: "x...X..o"} and `step`.
+
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -190,7 +200,7 @@
   (`juradaw.song.v1`; `keepProblem` says why when the browser won't). The sounds are kept apart, in IndexedDB (below).
   Other keys on this computer: `juradaw.recentId`, `juradaw.theme`, `juradaw.prefs.v1` (count-in, metronome and "connect MIDI keyboards
   without asking", `src/app/prefs.ts`),
-  `juradaw.panelHeight`, `juradaw.seenVersion`.
+  `juradaw.panelHeight`, `juradaw.seenVersion`, `juradaw.editorView`.
 - MIDI files: `src/midi/midiFile.ts` (pure: bytes in, bytes out). Reads format 0 and 1 (running status, note-on with
   velocity 0 as note-off, tempo, time signature, track names, General MIDI programs → `instrumentForProgram`, channel
   10 = drums): `readMidiFile` → `MidiData`, `midiTracks`, `midiToSong`. Writes format 1 (`writeMidiFile`, `songParts`,
@@ -351,7 +361,7 @@
   and 1024 px — at 1280 also with the "Notes on" button showing.
 - Tests (`tests/*.test.ts`, Vitest, pure code only — each file stands alone): time, edits, document (also keep and
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
-  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), recent (recent songs, a section's end), sound (Your own sound), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
+  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), recent (recent songs, a section's end), sound (Your own sound), steps (the step sequencer), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
   prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
   files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the
@@ -364,7 +374,7 @@
   `window.juradawStore` and `window.juradawEngine`; the browser's own file windows are switched off so Save downloads
   and Open uses the ordinary picker). It makes a song the way a person would: a track from the welcome card, a clip
   and notes drawn in the editor, play (the position advancing), loop (going round; then its end stretched and its
-  middle slid along), a drum beat from the Library, a bass line that must get a bass track of its own — and a second
+  middle slid along), a drum beat from the Library — opened in the step sequencer: boxes lit for its hits, a box clicked on, accented and off, a row painted in one undo step, Notes and back —, a bass line that must get a bass track of its own — and a second
   one that must go after the first, with no clip lying over another and the messages above the bottom panel —, mute
   and solo in the mixer, three notes recorded with the typing keyboard (the "Notes on" button showing, P not picking
   the Pencil, no message over the keys, the toolbar still fitting), a WAV export (a real RIFF file, as long as the

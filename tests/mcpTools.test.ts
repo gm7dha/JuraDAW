@@ -361,3 +361,21 @@ describe("your own sound and the newest instruments", () => {
     for (const id of ["vibraphone", "music-box", "steel-drum", "clavinet", "accordion", "cello", "glass-pad", "chiptune"]) await ok(s, "add_track", { instrument: id });
   });
 });
+
+describe("steps", () => {
+  it("adds a beat written as rows of steps, by drum name", async () => {
+    const { s } = session();
+    await ok(s, "add_track", { instrument: "drums", name: "Beat" });
+    await ok(s, "add_clip", { track: "Beat", bars: 1 });
+    const said = await ok(s, "add_notes", { track: "Beat", clip: 1, steps: { kick: "x...x...x...x...", snare: "....X.......x...", "closed hat": "x.x.x.x.x.x.x.x." } });
+    expect(said).toMatch(/Added 14 notes/);
+    const notes = midi(s)[0].notes;
+    expect(notes.filter((n) => n.pitch === 36).map((n) => n.start)).toEqual([0, 1, 2, 3]);
+    expect(notes.find((n) => n.pitch === 38 && n.start === 1)?.velocity).toBe(120);
+    await ok(s, "add_notes", { track: "Beat", clip: 1, steps: { "open hat": "x.x." }, step: 0.5 });
+    expect(midi(s)[0].notes.filter((n) => n.pitch === 46).map((n) => n.start)).toEqual([0, 1]);
+    expect(await bad(s, "add_notes", { track: "Beat", clip: 1, steps: { kick: "...." } })).toMatch(/all rests/);
+    expect(await bad(s, "add_notes", { track: "Beat", clip: 1 })).toMatch(/notes" or "steps/);
+    expect(await bad(s, "add_notes", { track: "Beat", clip: 1, steps: { kick: "x" }, step: 0.75 })).toMatch(/step should be/);
+  });
+});
