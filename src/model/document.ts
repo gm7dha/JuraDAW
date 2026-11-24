@@ -5,6 +5,7 @@
  * the browser.
  */
 import { cleanAutomation } from "./automation";
+import { cleanSound } from "./sound";
 import { cleanFinish, cleanKey, cleanSections } from "./songParts";
 import { cleanArp, cleanFilterWobble, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, TRACK_COLOURS } from "./types";
@@ -88,6 +89,15 @@ const INSTRUMENT_LABELS: Record<string, string> = {
   marimba: "Marimba",
   flute: "Flute",
   brass: "Brass",
+  vibraphone: "Vibraphone",
+  "music-box": "Music box",
+  "steel-drum": "Steel drum",
+  clavinet: "Clavinet",
+  accordion: "Accordion",
+  cello: "Cello",
+  "glass-pad": "Glass pad",
+  chiptune: "Chiptune",
+  custom: "Your own sound",
 };
 
 /** The instruments that are drum kits (each key a different drum, as DRUM_PITCHES in time.ts). */
@@ -191,7 +201,7 @@ function parseTrack(v: unknown, taken: Set<string>, before: readonly Track[]): T
 }
 
 /** A track's own effects from a file: only the ones that are switched on are kept. */
-type Extras = "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp" | "automation" | "harmony" | "squeeze" | "sway" | "swirl" | "swing" | "filterWobble";
+type Extras = "drive" | "crush" | "filter" | "chorus" | "pump" | "lows" | "highs" | "chop" | "arp" | "automation" | "harmony" | "squeeze" | "sway" | "swirl" | "swing" | "filterWobble" | "sound";
 function parseEffects(v: Record<string, unknown>): Pick<Track, Extras> {
   const out: Pick<Track, Extras> = {};
   for (const key of ["lows", "highs"] as const) {
@@ -206,6 +216,8 @@ function parseEffects(v: Record<string, unknown>): Pick<Track, Extras> {
   if (harmony) out.harmony = harmony;
   const automation = cleanAutomation(v.automation);
   if (automation) out.automation = automation;
+  const sound = v.kind === "instrument" ? cleanSound(v.sound) : undefined;
+  if (sound) out.sound = sound;
   const filterWobble = cleanFilterWobble(v.filterWobble);
   if (filterWobble) out.filterWobble = filterWobble;
   for (const key of ["drive", "crush", "chorus", "pump", "chop", "squeeze", "sway", "swirl", "swing"] as const) {

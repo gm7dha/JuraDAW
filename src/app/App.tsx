@@ -116,8 +116,11 @@ function useShortcuts() {
         return;
       }
       if (e.altKey) return;
-      // A slider or tick box with the focus keeps Space and the arrows for itself.
-      if (onControl(e.target) && (e.key === " " || e.key === "Enter" || e.key.startsWith("Arrow") || e.key === "Home")) return;
+      // A slider or tick box with the focus keeps the arrows for itself, and a tick box Space and Enter too.
+      // (Space does nothing on a slider, so after dragging one, Space still plays.)
+      const onSlider = (e.target as HTMLInputElement | null)?.type === "range";
+      if (onControl(e.target) && (((e.key === " " || e.key === "Enter") && !onSlider) || e.key.startsWith("Arrow") || e.key === "Home")) return;
+      if (onSlider && e.key === " ") (e.target as HTMLElement).blur();
       // A button that has the focus shouldn't also be "clicked" by Space or Enter.
       const onButton = (e.target as HTMLElement | null)?.tagName === "BUTTON";
       switch (e.key) {

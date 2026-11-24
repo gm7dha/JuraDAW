@@ -10,11 +10,12 @@
  */
 import { MIN_SECONDS, MOST_BEATS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
 import { cleanPoints } from "./automation";
+import { cleanSound, sameSound, soundOf } from "./sound";
 import { cleanFinish, cleanKey, cleanSections } from "./songParts";
 import { DEFAULT_ARP, cleanArp, cleanFilterWobble, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { EPS, beatsToSeconds, clipEnd, r6, secondsToBeats } from "./time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "./types";
-import type { Arp, Finish, Section, SongKey, FilterWobble, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
+import type { Arp, CustomSound, Finish, Section, SongKey, FilterWobble, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -174,7 +175,7 @@ export function duplicateTrack(song: Song, id: string): { song: Song; id: string
   return { song: { ...song, tracks, clips: [...song.clips, ...clips] }, id: copy.id };
 }
 
-export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony" | "filterWobble">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null; filterWobble?: Partial<FilterWobble> | null };
+export type TrackPatch = Partial<Omit<Track, "id" | "kind" | "filter" | "arp" | "harmony" | "filterWobble" | "sound">> & { filter?: Partial<TrackFilter>; arp?: Partial<Arp> | null; harmony?: Partial<Harmony> | null; filterWobble?: Partial<FilterWobble> | null; sound?: Partial<CustomSound> | null };
 
 /**
  * A track's settings changed, each kept inside its limits (blank names and unusable values are ignored; audio
@@ -212,6 +213,12 @@ export function updateTrack(song: Song, id: string, patch: TrackPatch): Song {
     const arp = cleanArp({ ...DEFAULT_ARP, ...track.arp, ...patch.arp });
     const was = track.arp;
     if (arp && !(was && was.style === arp.style && was.rate === arp.rate && was.octaves === arp.octaves)) next.arp = arp;
+  }
+  // "Your own sound": settings in part (the rest kept), or null to go back to the usual sound.
+  if (patch.sound === null) delete next.sound;
+  else if (patch.sound) {
+    const sound = cleanSound({ ...soundOf(track), ...patch.sound });
+    if (sound && !sameSound(sound, soundOf(track))) next.sound = sound;
   }
   // The filter wobble: settings in part (the rest kept), or null — or a depth of 0 — to switch it off.
   if (patch.filterWobble === null) delete next.filterWobble;

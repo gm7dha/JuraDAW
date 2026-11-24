@@ -10,7 +10,7 @@ import type { AudioClip, Clip, Song, Track } from "../model/types";
 import { fadeNode, shapedInput } from "./clipLevel";
 import { clipSource } from "./reverse";
 import type { Sound } from "./audioStore";
-import { instrumentById } from "./instruments";
+import { instrumentFor } from "./instruments";
 import { playClick } from "./metronome";
 import type { Mixer } from "./mixer";
 import { audioClipsBetween, loopIsUsable, nextLoopWindow, notesBetween, playEndBeat, type AudioEvent } from "./schedule";
@@ -258,7 +258,7 @@ export class Transport {
       const clip = clips.get(note.clipId);
       const shaped = clip && clip.kind === "midi" ? shapedInput(ctx, input, clip, clip.length, note.clipBeat, note.clipBeat + note.lengthBeats, (b) => timeOf(clip.start + b)) : null;
       const seconds = beatsToSeconds(note.lengthBeats, this.bpm);
-      const voice = instrumentById(track.instrument).startVoice(ctx, shaped ?? input, note.pitch, note.velocity, when, seconds);
+      const voice = instrumentFor(track).startVoice(ctx, shaped ?? input, note.pitch, note.velocity, when, seconds);
       voice.stop(Math.max(when, now) + seconds);
       this.track(voice, shaped);
     }

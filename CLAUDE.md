@@ -153,6 +153,20 @@
   reopened song has its recordings. `src/app/RecentMenu.tsx` in the top bar (icon only under 1100 px); New and
   Open's questions say the song is kept in Recent. Sections: "Loop this section" (`sectionEnd` in songParts.ts).
 
+- v0.9: eight instruments (clavinet, accordion — Keys; cello, glass-pad — Strings and pads; vibraphone, music-box,
+  steel-drum — Acoustic; chiptune — Synths; levels measured, MIDI programs both ways) and **Your own sound**: instrument
+  "custom" (last of the Synths) with Track `sound?: CustomSound` {wave smooth|soft|hollow|bright, brightness, fadeIn,
+  hold, ringOn, thickness, bassLayer, vibrato — 0–1}, left out until changed. Pure `src/model/sound.ts`
+  (`CUSTOM_INSTRUMENT`, `SOUND_WAVES`, `DEFAULT_SOUND`, `SOUND_PRESETS`, `cleanSound`, `soundOf`, `sameSound`,
+  `soundNumbers` — attack, decay, sustain, release, cutoff as a multiple of the pitch, detune, sub, vibrato, `waveLevel`
+  measured so every wave is about as loud —, `soundWords`); edits `sound` patch (a part at a time, null for the usual);
+  parseSong (instrument tracks only). **Everything that starts a track's notes asks `instrumentFor(track)`** (transport,
+  render, live notes): the built-in instrument, or one made from the track's settings (`customRecipe`, once per
+  settings object). SidePanel `CustomSoundSettings` (presets, the wave, seven sliders) above the instrument cards.
+  Claude: add_track/edit_track `sound` {preset, wave, brightness, fade_in, hold, ring_on, thickness, bass_layer,
+  vibrato}. Real plugins aren't possible here (no VST/AU in a browser, no outside code). Shortcuts: Space plays even
+  from a slider that has the focus (only the arrows stay the slider's).
+
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -213,7 +227,7 @@
   edits and tempo changes are heard while it plays and a loop goes round without a gap; stops by itself when the song
   runs out), `schedule.ts` (pure: `notesBetween`, `audioClipsBetween`, `audibleTracks` — mute and solo —,
   `nextLoopWindow`, `playEndBeat`), `instruments.ts` (`INSTRUMENTS`: piano, felt-piano, electric-piano, organ, strings,
-  pad, choir, guitar, harp, kalimba, marimba, flute, brass, bass, synth-bass, sub-bass, growl-bass, bass-808, lead, supersaw, wobble, pluck, bells, sweep — each a recipe that builds one note from oscillators, noise and filters, levels
+  pad, choir, cello, glass-pad, clavinet, accordion, guitar, harp, kalimba, marimba, flute, brass, vibraphone, music-box, steel-drum, bass, synth-bass, sub-bass, growl-bass, bass-808, lead, supersaw, wobble, pluck, bells, chiptune, sweep, custom — each a recipe that builds one note from oscillators, noise and filters, levels
   matched by measuring — and drums; `instrumentById` falls back to the piano), `drums.ts` (the kit, every hit made on
   the spot), `patch.ts` + `voice.ts` (building one note, and letting go of it without a click), `pluck.ts` (pure
   Karplus–Strong), `metronome.ts` (the click, also the count-in), `record.ts` (the microphone with the browser's
@@ -337,7 +351,7 @@
   and 1024 px — at 1280 also with the "Notes on" button showing.
 - Tests (`tests/*.test.ts`, Vitest, pure code only — each file stands alone): time, edits, document (also keep and
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
-  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), recent (recent songs, a section's end), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
+  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), recent (recent songs, a section's end), sound (Your own sound), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
   prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
   files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the
@@ -358,7 +372,7 @@
   each), Save → New → Open (the same song back), Open and a dropped file asking first when there are unsaved changes
   (no: the song stays; yes: it opens), a WAV it makes itself imported as a clip (waveform drawn, and inside the saved
   file), a clip renamed on the clip, undo/redo/History, a clip dragged to the edge (the view scrolls), a reload (the
-  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, sections named, clicked and deleted on the ruler, the key chosen and a chord drawn in the editor, the song's squeeze, a section looped, New keeping the song in Recent and Recent opening it again with its recording, a pretend MIDI keyboard that the page must not ask the
+  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, sections named, clicked and deleted on the ruler, the key chosen and a chord drawn in the editor, the song's squeeze, a section looped, the newest instruments and Your own sound shaped from a preset and heard, New keeping the song in Recent and Recent opening it again with its recording, a pretend MIDI keyboard that the page must not ask the
   browser for until "Connect a MIDI keyboard" is pressed (and must reconnect by itself after a reload), dark mode,
   Help, What's new, and the bars fitting at 1024 and 1280 px. It fails on any console
   error. It never waits a fixed time: every step waits for what it expects (`until`, `playedPast`), and messages are

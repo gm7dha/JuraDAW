@@ -3569,3 +3569,23 @@ button.display-button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* "Your own sound" in the track's settings. */
+.custom-sound {
+  margin: 4px 0 12px;
+  padding: 8px 10px 4px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--subtle);
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 8px;
+}
+
+.custom-sound .segmented {
+  margin-bottom: 8px;
+}

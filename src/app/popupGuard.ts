@@ -7,7 +7,7 @@
  * - When the key was pressed inside a smaller popup (the Settings menu):
  *   anything with role="dialog".
  * - When the key was typed into a text box, a number box or a drop-down
- *   (a slider or tick box only keeps Space and the arrow keys for itself).
+ *   (a tick box only keeps Space, Enter and the arrow keys for itself; a slider only the arrows).
  */
 
 interface ClosestLike {

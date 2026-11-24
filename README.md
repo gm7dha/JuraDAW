@@ -7,7 +7,7 @@
 JuraDAW runs entirely in your browser. Your songs and recordings never leave your computer, there's no account, and
 it's free.
 
-> **Status: v0.8 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
+> **Status: v0.9 preview.** Add tracks, play the built-in instruments, draw or record notes, record sound, mix, and
 > export the song as a sound file — or ask Claude to write the music with you. See the [roadmap](docs/DESIGN.md#roadmap).
 
 ## What you can do today
@@ -15,9 +15,12 @@ it's free.
 - **Tracks**: up to 32, each an instrument to play or a track for recorded sound, with its own colour, volume,
   left–right, Mute and Solo. An empty song offers three ways to begin: play an instrument, make a drum beat, or record
   sound.
-- **Built-in instruments**, made in the browser so nothing has to download: pianos, organ, strings, pads and a choir,
-  acoustic guitar, harp, kalimba, marimba, flute and brass, five basses, synths, bells and a noise sweep, and three
-  drum kits (an ordinary kit, an 808 kit and an electronic kit).
+- **Built-in instruments**, made in the browser so nothing has to download: pianos, organ, clavinet and accordion,
+  strings, cello, pads, a glass pad and a choir, acoustic guitar, harp, kalimba, marimba, vibraphone, music box, steel
+  drum, flute and brass, five basses, synths, bells, chiptune and a noise sweep, and three drum kits (an ordinary kit,
+  an 808 kit and an electronic kit).
+- **Your own sound**: an instrument you shape yourself — start from a preset (Warm pad, Lead, Pluck…), pick a wave,
+  and change its brightness, fade in, hold, ring on, thickness, bass layer and vibrato.
 - **Clips** on a timeline of bars and beats: drag to move them (they snap to the grid; hold Shift not to), drag an
   edge to make them longer or shorter, split with the Scissors, join, repeat, duplicate, copy and paste, rename. A
   **right-click menu** has the lot. Drag something to the edge of the view and the view scrolls along. Nothing is put

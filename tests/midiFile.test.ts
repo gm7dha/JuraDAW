@@ -254,7 +254,10 @@ describe("General MIDI instruments", () => {
     expect(instrumentForProgram(48)).toBe("strings");
     expect(instrumentForProgram(81)).toBe("lead");
     expect(instrumentForProgram(90)).toBe("pad");
-    expect(instrumentForProgram(11)).toBe("bells");
+    expect(instrumentForProgram(11)).toBe("vibraphone");
+    expect(instrumentForProgram(14)).toBe("bells");
+    expect(instrumentForProgram(7)).toBe("clavinet");
+    expect(instrumentForProgram(42)).toBe("cello");
     expect(instrumentForProgram(25)).toBe("guitar");
     expect(instrumentForProgram(27)).toBe("pluck");
     expect(instrumentForProgram(12)).toBe("marimba");

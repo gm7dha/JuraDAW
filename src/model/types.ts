@@ -58,6 +58,28 @@ export interface Track {
   swing?: number;
   /** Filter wobble: the filter opens and closes in time with the song (the dubstep "wub"). */
   filterWobble?: FilterWobble;
+  /** The settings of "Your own sound" (instrument "custom"); left out until one is changed (DEFAULT_SOUND is used). */
+  sound?: CustomSound;
+}
+
+/** "Your own sound": a simple synth made from a few friendly settings, every one 0–1 but the wave. */
+export interface CustomSound {
+  /** smooth (sine), soft (triangle), hollow (square), bright (sawtooth). */
+  wave: "smooth" | "soft" | "hollow" | "bright";
+  /** How much of the top of the sound is let through. */
+  brightness: number;
+  /** How slowly it swells in: 0 = at once, 1 = about two seconds. */
+  fadeIn: number;
+  /** How much of its loudness it holds while the note is held: 0 = it dies away like a plucked string, 1 = it holds. */
+  hold: number;
+  /** How long it rings on after the note ends: 0 = it stops, 1 = about three seconds. */
+  ringOn: number;
+  /** Copies a little out of tune with each other, for a thicker sound. */
+  thickness: number;
+  /** A pure note an octave below, for weight. */
+  bassLayer: number;
+  /** A gentle wobble in pitch, as a singer's or a violinist's. */
+  vibrato: number;
 }
 
 export interface FilterWobble {
