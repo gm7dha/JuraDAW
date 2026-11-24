@@ -10,6 +10,7 @@ import { AUTO_NAMES, AUTO_PARAMS, MOST_POINTS, lineOf } from "../model/automatio
 import * as edits from "../model/edits";
 import { CUSTOM_INSTRUMENT, SOUND_PRESETS, SOUND_WAVES, soundOf, soundWords } from "../model/sound";
 import { MOST_SECTIONS, finishOf, keyWords } from "../model/songParts";
+import { STEP_CHOICES, stepsToNotes } from "../model/steps";
 import { KEYS } from "../library/theory";
 import { ARP_STYLES, HARMONY_STYLES, WOBBLE_RATES, arpRateWords, wobbleRateWords, clipGain, effectsOf, filterIsOn } from "../model/shaping";
 import { DRUM_PITCHES, clipEnd, clipLength, drumName, pitchName, songLength, timeText, beatsToSeconds } from "../model/time";
@@ -47,6 +48,7 @@ export const FORMAT_GUIDE = `How JuraDAW songs work:
 - Drum kits: "drums" (an ordinary kit), "drums-808" (trap and hip-hop: booming kick, snappy snare, ticking hats) and "drums-electro" (house, techno, drum and bass). "bass-808" is the long, gliding bass of trap. The library has trap, house, techno, drum-and-bass and lo-fi beats and a build-up.
 - A recording's clip can be played backwards: "reverse": true in edit_clip.
 - For a modern, atmospheric sound: felt-piano, choir, pad and wobble with plenty of reverb for the soft side; sub-bass under growl-bass or synth-bass, supersaw chords with pump, drive or crush on drums, and a sweep into each new section for the hard side.
+- For a drum beat, add_notes "steps" is easiest: one row of letters a drum, a letter a sixteenth (x hit, X accent, o soft, . rest) — what the user sees in the app's step sequencer.
 - Good habits: describe_song first; build a song a part at a time (drums, bass, chords, tune) with each part on its own track; use list_library_patterns / insert_library_pattern for ready-made beats, bass lines and chord sequences that fit together when given the same key, scale and chords; keep bass around C1–C3, chords around C3–C5 and tunes around C4–C6; vary velocity a little so it doesn't sound mechanical.
 - The user hears the result in JuraDAW (https://gm7dha.github.io/JuraDAW/): live if they clicked "Connect to Claude" there (see live_status), otherwise save_song and they open the .juradaw file. Recording sound and exporting a WAV sound file are done by the user in JuraDAW; export_midi makes a standard MIDI file here.`;
 
@@ -690,12 +692,35 @@ export const TOOLS: ToolDef[] = [
   {
     name: "add_notes",
     title: "Add notes to a clip",
-    description: "Add notes to a clip that's there. The clip grows by whole bars if a note runs past its end.",
-    inputSchema: { type: "object", properties: { clip: CLIP_REF, track: TRACK_REF, notes: NOTE_SCHEMA }, required: ["notes"] },
+    description:
+      'Add notes to a clip that\'s there — as "notes", or as "steps": rows of a step-sequencer grid, one letter a step from the clip\'s start, e.g. {"kick": "x...x...x...x...", "snare": "....x.......x...", "closed hat": "x.x.x.x.x.x.x.x."} (X accented, x normal, o soft, g a ghost note, "." a rest; each step a sixteenth unless "step" says otherwise). The clip grows by whole bars if a note runs past its end.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        clip: CLIP_REF,
+        track: TRACK_REF,
+        notes: NOTE_SCHEMA,
+        steps: { type: "object", description: 'Rows of steps by pitch or drum name: {"kick": "x...x...", "C3": "x.x....."}.' },
+        step: { type: "number", description: "Beats a step: 0.25 (sixteenths, the usual), 0.5 (eighths) or 0.333 (triplets)." },
+      },
+    },
     run(s, a) {
-      noExtras(a, ["clip", "track", "notes"], "add_notes");
+      noExtras(a, ["clip", "track", "notes", "steps", "step"], "add_notes");
       const clip = midiClipOf(s.song, a, "add_notes");
-      const notes = notesOf(a.notes, "notes", isDrums(s.song, clip.trackId), { allowEmpty: false });
+      const drums = isDrums(s.song, clip.trackId);
+      if (a.notes === undefined && a.steps === undefined) throw new InputError('add_notes needs "notes" or "steps".');
+      const notes = a.notes === undefined ? [] : notesOf(a.notes, "notes", drums, { allowEmpty: false });
+      if (a.steps !== undefined) {
+        const rows = object(a.steps, "steps");
+        const step = a.step === undefined ? 0.25 : STEP_CHOICES.find((c) => Math.abs(c.step - num(a.step, "step", { min: 0.2, max: 1 })) < 0.02)?.step;
+        if (step === undefined) throw new InputError("step should be 0.25 (sixteenths), 0.5 (eighths) or 0.333 (triplets).");
+        for (const [name, pattern] of Object.entries(rows)) {
+          const pitch = pitchOf(name, `steps."${name}"`, drums);
+          const made = stepsToNotes(pitch, text(pattern, `steps."${name}"`), step, drums ? Math.min(step, 0.25) : step);
+          notes.push(...made);
+        }
+        if (!notes.length) throw new InputError('Those steps are all rests: write "x" where a note should play.');
+      }
       const done = edits.addNotes(s.song, clip.id, notes);
       if (!done || !s.commit(done.song)) throw new InputError(`"${clip.name}" can't hold that many notes (a clip holds at most 20,000). Put them in another clip.`);
       const now = edits.findMidiClip(s.song, clip.id);

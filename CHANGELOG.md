@@ -6,6 +6,17 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.10 — The step sequencer
+
+- **Steps**: the note editor has a new way of seeing a clip — a grid of boxes, a row for each drum (or each note of
+  the song's key) and a box for each step across. Click a box to play that sound on that step, click it again to take
+  it away, drag along a row to fill several at once, and Shift-click to make a step louder (accented) or softer.
+  Choose sixteenths, eighths or triplets for the steps.
+- **Notes / Steps** at the top of the editor switches between the grid and the notes as blocks — they're the same
+  notes, so you can draw a beat in Steps and fine-tune it in Notes. Drum clips open in Steps, and other clips in
+  Notes, until you choose otherwise.
+- Claude can write a beat as rows of steps too, just as you'd see it in the grid.
+
 ## v0.9 — Your own sound, and eight more instruments
 
 - **Your own sound**: a new instrument (under Synths) that you shape yourself — JuraDAW's own take on a synth plugin.

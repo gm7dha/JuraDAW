@@ -15,7 +15,7 @@ import { PianoRoll } from "./PianoRoll";
 import { panelHeight } from "./songUi";
 
 const TABS: { panel: Exclude<Panel, null>; label: string; icon: (p: { size?: number }) => ReactElement; hint: string }[] = [
-  { panel: "editor", label: "Editor", icon: Icons.Editor, hint: "See and change the notes of a clip" },
+  { panel: "editor", label: "Editor", icon: Icons.Editor, hint: "See and change the notes of a clip — as notes, or as a grid of steps" },
   { panel: "mixer", label: "Mixer", icon: Icons.Mixer, hint: "Every track's volume, left–right, reverb and echo" },
   { panel: "automation", label: "Automation", icon: Icons.Automation, hint: "Draw lines that change a track's volume, filter or left–right as the song plays" },
   { panel: "keys", label: "Keys", icon: Icons.Keys, hint: "Play the selected track with on-screen keys or your typing keyboard" },

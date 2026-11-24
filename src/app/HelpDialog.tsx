@@ -152,6 +152,10 @@ export function HelpDialog() {
           double-click to rename it, right-click to loop it.
         </li>
         <li>
+          <strong>Steps</strong>: in the editor, switch <em>Notes / Steps</em> to <em>Steps</em> for a grid of boxes — click a box to play that drum (or note) on that step, drag along a
+          row to fill several, Shift-click to make a step louder or softer.
+        </li>
+        <li>
           <strong>Your own sound</strong>: pick it among the instruments (under Synths) and shape it in the track's settings — start from a preset such as <em>Warm pad</em> or <em>Lead</em>,
           choose a wave, then change its brightness, how it fades in and rings on, its thickness, a bass layer and vibrato.
         </li>

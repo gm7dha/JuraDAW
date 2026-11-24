@@ -3589,3 +3589,120 @@ button.display-button {
 .custom-sound .segmented {
   margin-bottom: 8px;
 }
+
+/* The step sequencer: the clip as a grid of boxes. */
+.steps {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.steps-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.steps-content {
+  display: flex;
+  padding-bottom: 8px;
+}
+
+.steps-names {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.steps-name {
+  display: block;
+  width: 100%;
+  padding: 0 8px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line-2);
+  cursor: pointer;
+}
+
+.steps-name:hover {
+  color: var(--ink);
+  background: var(--line-2);
+}
+
+.steps-grid {
+  position: relative;
+  flex: none;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.step {
+  position: absolute;
+  width: var(--cell);
+  height: var(--row);
+  box-sizing: border-box;
+  border-right: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+  background: var(--panel);
+}
+
+.step.odd {
+  background: var(--subtle);
+}
+
+.step.beat {
+  border-left: 1px solid var(--line);
+}
+
+.step.bar {
+  border-left: 2px solid var(--bed-edge, var(--line));
+}
+
+.step.on::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 4px;
+  background: var(--track);
+}
+
+.step.on.soft::after {
+  opacity: 0.45;
+}
+
+.step.on.accent::after {
+  inset: 2px;
+  box-shadow: 0 0 0 2px var(--ink) inset;
+}
+
+.steps-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.view-switch {
+  flex: none;
+}
+
+.view-switch button {
+  padding: 2px 10px;
+}

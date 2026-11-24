@@ -318,8 +318,42 @@ try {
   await closeToasts();
   expect((await page.locator(".toast").count()) === 0, "the message closed with its ✕");
   await page.locator(`[data-clip="${drumClip.id}"]`).dblclick();
-  await page.waitForSelector(".roll-key.drum");
-  expect((await page.locator(".roll-key.drum").count()) >= 8, "the drums listed by name in the editor");
+  // A drum clip opens as a grid of steps (the step sequencer), its drums listed by name.
+  await page.waitForSelector(".steps-grid");
+  expect((await page.locator(".steps-name").count()) >= 8, "the drums listed by name in the step sequencer");
+  {
+    const notesOf = async () => (await song()).clips.find((c) => c.id === drumClip.id).notes;
+    const before = await notesOf();
+    expect((await page.locator(".step.on").count()) === new Set(before.map((n) => `${n.pitch}:${Math.floor(n.start * 4 + 1e-6)}`)).size, "a lit box for every step that has a drum hit");
+    // The cowbell row is empty in a rock beat: click a box, and a cowbell plays on that step.
+    const box = (pitch, i) => page.locator(`.step[data-step="${pitch}:${i}"]`);
+    await box(56, 2).click();
+    await until(`s.history.present.clips.find((c) => c.id === "${drumClip.id}").notes.some((n) => n.pitch === 56 && n.start === 0.5)`, "a click on a box adding a cowbell on that step");
+    expect((await box(56, 2).getAttribute("class")).includes("on"), "the box lit");
+    await box(56, 2).click({ modifiers: ["Shift"] });
+    await until(`s.history.present.clips.find((c) => c.id === "${drumClip.id}").notes.find((n) => n.pitch === 56 && n.start === 0.5)?.velocity === 120`, "Shift-click making the step accented");
+    await box(56, 2).click();
+    await until(`!s.history.present.clips.find((c) => c.id === "${drumClip.id}").notes.some((n) => n.pitch === 56)`, "a second click taking it away");
+    // Drag along the row: four boxes filled in one undo step.
+    const steps = await get("s.history.past.length");
+    const a = await box(56, 4).boundingBox();
+    const b = await box(56, 7).boundingBox();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await until(`s.history.present.clips.find((c) => c.id === "${drumClip.id}").notes.filter((n) => n.pitch === 56).length === 4`, "a drag along the row filling four boxes");
+    expect((await get("s.history.past.length")) === steps + 1, "the drag one undo step");
+    await page.keyboard.press("Control+z");
+    await until(`!s.history.present.clips.find((c) => c.id === "${drumClip.id}").notes.some((n) => n.pitch === 56)`, "undo taking them away again");
+    expect((await notesOf()).length === before.length, "the beat as it was");
+    // The same clip as notes, and back.
+    await page.click('.view-switch button:has-text("Notes")');
+    await page.waitForSelector(".roll-key.drum");
+    expect((await page.locator(".roll-key.drum").count()) >= 8, "the drums by name in the note editor too");
+    await page.click('.view-switch button:has-text("Steps")');
+    await page.waitForSelector(".steps-grid");
+  }
 
   begin("a bass line from the Library gets a bass track of its own");
   // The piano is selected: a bass line mustn't go onto it (played by a piano, on top of the piano's clip).
