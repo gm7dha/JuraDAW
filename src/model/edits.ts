@@ -10,10 +10,11 @@
  */
 import { MIN_SECONDS, MOST_BEATS, MOST_CLIPS, MOST_NOTES, freeTrackName, newId, nextTrackColour } from "./document";
 import { cleanPoints } from "./automation";
+import { cleanFinish, cleanKey, cleanSections } from "./songParts";
 import { DEFAULT_ARP, cleanArp, cleanFilterWobble, cleanHarmony, cleanFilter, cleanSweep, filterIsOn, tone } from "./shaping";
 import { EPS, beatsToSeconds, clipEnd, r6, secondsToBeats } from "./time";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS } from "./types";
-import type { Arp, FilterWobble, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
+import type { Arp, Finish, Section, SongKey, FilterWobble, Harmony, AutoParam, AutoPoint, Automation, AudioClip, AudioInfo, Clip, MidiClip, Note, Song, Sweep, Track, TrackFilter } from "./types";
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -71,6 +72,38 @@ export function clipCopy(clip: Clip, patch: { trackId?: string; start?: number }
 export function setSongName(song: Song, name: string): Song {
   const trimmed = name.trim().slice(0, 200);
   return trimmed && trimmed !== song.name ? { ...song, name: trimmed } : song;
+}
+
+/** The song's key (null: none). */
+export function setKey(song: Song, key: SongKey | null): Song {
+  const clean = key ? cleanKey(key) : undefined;
+  if (clean?.note === song.key?.note && clean?.scale === song.key?.scale) return song;
+  const next: Song = { ...song };
+  if (clean) next.key = clean;
+  else delete next.key;
+  return next;
+}
+
+/** The song's sections, made safe; none takes the field away. */
+export function setSections(song: Song, sections: readonly Section[]): Song {
+  const clean = cleanSections(sections);
+  const was = song.sections ?? [];
+  if (clean.length === was.length && clean.every((s, i) => s.beat === was[i].beat && s.name === was[i].name)) return song;
+  const next: Song = { ...song };
+  if (clean.length) next.sections = clean;
+  else delete next.sections;
+  return next;
+}
+
+/** Finishing touches changed a part at a time; a touch at 0 is taken away, and with it the field when none is left. */
+export function setFinish(song: Song, patch: Partial<Finish>): Song {
+  const clean = cleanFinish({ ...song.finish, ...patch });
+  const was = song.finish;
+  if (clean?.lows === was?.lows && clean?.highs === was?.highs && clean?.squeeze === was?.squeeze) return song;
+  const next: Song = { ...song };
+  if (clean) next.finish = clean;
+  else delete next.finish;
+  return next;
 }
 
 /** The tempo, kept between MIN_BPM and MAX_BPM. Notes keep their beats; sounds keep their seconds. */

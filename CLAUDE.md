@@ -127,6 +127,22 @@
   `FilterWobbleSettings`. Claude: add_track/edit_track take squeeze, sway, swirl, swing, filter_wobble and filter kind
   "band".
 
+- v0.7: three optional `Song` fields (left out when unused): `key` {note 0–11, scale major|minor}, `sections`
+  [{beat, name}] in order, and `finish` {lows, highs −1…1, squeeze 0–1}. Pure `src/model/songParts.ts` (`cleanKey`,
+  `keyWords`, `ALL_KEYS`, `pitchInKey`, `chordAt` — the key's own triad on a note, a note outside the key taken as the
+  key note below; a major triad with no key —, `cleanSections`, `nextSectionName` (SECTION_NAMES in a song's order,
+  never one used), `sectionAt`, `MOST_SECTIONS`, `cleanFinish`, `finishOf`); edits `setKey`, `setSections`,
+  `setFinish`; parseSong `songExtras`; historyLabel names them. Sound: the mix → finish lows/highs shelves (half a
+  track's TONE_DB) → plain or a lazily made compressor → master; the song's squeeze takes back the browser's own
+  lift (`compressorLiftDb`, capped at the measured `FINISH_SQUEEZE_MOST_LIFT_DB`) so the slider stays about as loud
+  all the way up. UI: TracksView's ruler is 58 px — loop strip, bar numbers, then a `.section-lane` (SECTION_H 18)
+  with `.section-flag`s (click seeks, double-click renames in a `.section-name-box`, right-click menu), "+ Section"
+  in the ruler's corner (at the play position) and a right-click menu on the ruler; PianoRoll's `KeyPicker` (also in
+  SongSettings), `.roll-off-key` shading, the Chords button (double-click and the Pencil add a whole chord, one undo
+  step); SidePanel `FinishSettings` ("Song bass/treble/squeeze"). Claude: set_song takes key ("A minor"), sections
+  [{bar, name}] | null and finish {bass, treble, squeeze}; describe_song says them. The smoke test compares songs
+  with `sameData` (field order doesn't count).
+
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -311,7 +327,7 @@
   and 1024 px — at 1280 also with the "Notes on" button showing.
 - Tests (`tests/*.test.ts`, Vitest, pure code only — each file stands alone): time, edits, document (also keep and
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
-  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
+  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
   prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
   files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the
@@ -332,7 +348,7 @@
   each), Save → New → Open (the same song back), Open and a dropped file asking first when there are unsaved changes
   (no: the song stays; yes: it opens), a WAV it makes itself imported as a clip (waveform drawn, and inside the saved
   file), a clip renamed on the clip, undo/redo/History, a clip dragged to the edge (the view scrolls), a reload (the
-  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, a pretend MIDI keyboard that the page must not ask the
+  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, sections named, clicked and deleted on the ruler, the key chosen and a chord drawn in the editor, the song's squeeze, a pretend MIDI keyboard that the page must not ask the
   browser for until "Connect a MIDI keyboard" is pressed (and must reconnect by itself after a reload), dark mode,
   Help, What's new, and the bars fitting at 1024 and 1280 px. It fails on any console
   error. It never waits a fixed time: every step waits for what it expects (`until`, `playedPast`), and messages are

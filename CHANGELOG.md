@@ -6,6 +6,21 @@ newer things won't open in an older version until those things are back).
 
 The point in the history for each version is the commit shown (see https://github.com/gm7dha/JuraDAW/commits/main).
 
+## v0.7 — Sections, the song's key and chords, finishing touches
+
+- **Sections**: name the parts of your song — Intro, Verse, Chorus, Bridge, Outro — along the bottom of the bar
+  ruler. Press **+ Section** (it names the part where playing starts) or right-click the ruler; a name is offered
+  in the order songs usually go, and you can type your own. Click a section to play from its start, double-click
+  to rename it, right-click to delete the name.
+- **The song's key**: choose it in the note editor (or in the song's settings, with nothing selected). The notes
+  outside the key are shaded, so it's easy to see which notes fit.
+- **Chords** in the note editor: press **Chords** and each note you add becomes a whole chord — the key's own chord
+  on that note, so it always fits (a major chord when no key is chosen). Drawn with the Pencil, the whole chord
+  stretches together.
+- **Finishing touches** on the whole song, in the song's settings: **Song bass**, **Song treble** and **Song
+  squeeze** (squeezes the whole mix together so it sounds fuller and steadier, as finished songs do).
+- Claude can set the key, name the sections and add finishing touches.
+
 ## v0.6 — Acoustic instruments, more effects and swing
 
 - **Six acoustic instruments**, under a new *Acoustic* heading: **Acoustic guitar**, **Harp**, **Kalimba** (thumb

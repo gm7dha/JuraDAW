@@ -11,12 +11,14 @@ import { useEffect, useMemo, useState } from "react";
 import { INSTRUMENTS, instrumentById } from "../audio/instruments";
 import { AUTO_NAMES, AUTO_PARAMS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
+import { finishOf } from "../model/songParts";
 import { ARP_RATES, ARP_STYLES, DEFAULT_ARP, HARMONY_STYLES, WOBBLE_RATES, wobbleRateWords, arpRateWords, clipFades, clipGain, cutoffHz, effectsOf, filterIsOn, hzText, toneWords } from "../model/shaping";
 import { useStore } from "../model/store";
 import { MAX_BPM, MIN_BPM, MIN_LENGTH, TRACK_COLOURS, type Clip, type HarmonyStyle, type Song, type Track } from "../model/types";
 import { hear, playheadBeat } from "./engineApp";
 import { Icons, MarkupIcon } from "./icons";
 import { panWords } from "./Mixer";
+import { KeyPicker } from "./PianoRoll";
 import { NumberBox } from "./NumberBox";
 import { Slider } from "./Slider";
 import { barBeat, barsAndBeats, clipBeats, lengthWords, withTrack } from "./songUi";
@@ -543,6 +545,21 @@ function TrackSettings({ song, track }: { song: Song; track: Track }) {
   );
 }
 
+/** Finishing touches on the whole song: bass, treble and a gentle squeeze before the master volume. */
+function FinishSettings({ song }: { song: Song }) {
+  const f = finishOf(song.finish);
+  return (
+    <>
+      <div className="field-label">
+        Finishing touches <span className="muted">— on the whole song</span>
+      </div>
+      <SliderRow label="Song bass" words={toneWords(f.lows)} value={f.lows} min={-1} max={1} step={0.05} usual={0} title="More or less low end in the whole song (double-click for no change)" make={(sg, v) => edits.setFinish(sg, { lows: Math.abs(v) < 0.03 ? 0 : v })} />
+      <SliderRow label="Song treble" words={toneWords(f.highs)} value={f.highs} min={-1} max={1} step={0.05} usual={0} title="More or less sparkle at the top of the whole song (double-click for no change)" make={(sg, v) => edits.setFinish(sg, { highs: Math.abs(v) < 0.03 ? 0 : v })} />
+      <SliderRow label="Song squeeze" words={f.squeeze > 0 ? percent(f.squeeze) : "off"} value={f.squeeze} usual={0} title="Squeezes the whole song together so it sounds fuller and steadier, as finished songs do (double-click for off)" make={(sg, v) => edits.setFinish(sg, { squeeze: v })} />
+    </>
+  );
+}
+
 function SongSettings({ song }: { song: Song }) {
   const s = useStore.getState;
   return (
@@ -562,6 +579,8 @@ function SongSettings({ song }: { song: Song }) {
         </label>
       </div>
       <SliderRow label="Master volume" words={percent(song.master)} value={song.master} usual={0.8} title="The volume of the whole song (double-click for the usual 80%)" make={(sg, v) => ({ ...sg, master: v })} />
+      <KeyPicker song={song} label />
+      {song.tracks.length > 0 && <FinishSettings song={song} />}
       {song.tracks.length === 0 ? (
         <p className="panel-hint">
           Pick a card to begin. The <b>Library</b> has ready-made drum beats, bass lines and chords.

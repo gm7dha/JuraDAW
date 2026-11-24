@@ -148,6 +148,14 @@ export function HelpDialog() {
           <strong>Arpeggiator</strong>: tick it under a track's effects and the chords on that track play one note at a time, in a pattern. Write long, held chords and let it do the rest.
         </li>
         <li>
+          <strong>Sections</strong>: press <em>+ Section</em> by the ruler (or right-click the ruler) to name a part of the song — Intro, Verse, Chorus. Click a section to play from it,
+          double-click to rename it.
+        </li>
+        <li>
+          <strong>Key and chords</strong>: choose the song's <em>Key</em> in the note editor and the notes outside it are shaded. Press <em>Chords</em> and each note you add becomes a whole
+          chord that fits. The song's settings (click an empty spot so nothing is selected) also have <em>finishing touches</em> for the whole song.
+        </li>
+        <li>
           <strong>More effects</strong>: <em>Squeeze</em> evens out loud and quiet, <em>Swirl</em> adds a sweeping whoosh, <em>Sway</em> swings the sound left and right, and <em>Swing</em> makes
           the off-beat notes come a little late for a groove. The filter can also <em>Keep middle</em> (a telephone sound), and <em>Filter wobble</em> opens and closes it in time with the
           song.

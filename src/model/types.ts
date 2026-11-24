@@ -197,6 +197,33 @@ export interface Song {
   /** Every clip of every track, in no particular order. */
   clips: Clip[];
   audio: AudioInfo[];
+  /** The song's key, when chosen: the note editor shades the notes outside it and draws chords from it. */
+  key?: SongKey;
+  /** Named parts of the song (Intro, Verse, Chorus…), each from its beat to the next one's; in order (left out when none). */
+  sections?: Section[];
+  /** Finishing touches on the whole song (left out when there are none). */
+  finish?: Finish;
+}
+
+export interface SongKey {
+  /** The key note: 0 = C … 11 = B. */
+  note: number;
+  scale: "major" | "minor";
+}
+
+export interface Section {
+  /** Where it starts (beats; on a bar line when made in the app). */
+  beat: number;
+  name: string;
+}
+
+export interface Finish {
+  /** −1…1: less or more of the low end of the whole song. */
+  lows?: number;
+  /** −1…1: less or more of the top end. */
+  highs?: number;
+  /** 0–1: the whole song squeezed together, fuller and steadier. */
+  squeeze?: number;
 }
 
 export const MIN_BPM = 30;

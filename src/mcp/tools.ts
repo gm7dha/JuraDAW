@@ -8,9 +8,11 @@
 import { FILE_EXTENSION, MOST_BEATS, isDrumKit, newSong, newTrack, readSongFile, songFileText, instrumentLabel } from "../model/document";
 import { AUTO_NAMES, AUTO_PARAMS, MOST_POINTS, lineOf } from "../model/automation";
 import * as edits from "../model/edits";
+import { MOST_SECTIONS, finishOf, keyWords } from "../model/songParts";
+import { KEYS } from "../library/theory";
 import { ARP_STYLES, HARMONY_STYLES, WOBBLE_RATES, arpRateWords, wobbleRateWords, clipGain, effectsOf, filterIsOn } from "../model/shaping";
 import { DRUM_PITCHES, clipEnd, clipLength, drumName, pitchName, songLength, timeText, beatsToSeconds } from "../model/time";
-import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, type AutoPoint, type Clip, type MidiClip, type Note, type Song, type Track } from "../model/types";
+import { MAX_BPM, MIN_BPM, MIN_LENGTH, MOST_TRACKS, type AutoPoint, type Clip, type Finish, type SongKey, type MidiClip, type Note, type Song, type Track } from "../model/types";
 import { LIBRARY, cleanValues, findPattern, makePattern, patternSuitsInstrument } from "../library/catalogue";
 import { songToMidi } from "../midi/midiFile";
 import { InputError, bool, list, noExtras, num, object, oneOf, optionalNum, r6, text, type Obj } from "./args";
@@ -37,6 +39,7 @@ export const FORMAT_GUIDE = `How JuraDAW songs work:
 - More track effects (per cent, off unless set): "squeeze" (a compressor: steadier, punchier), "swirl" (a phaser: a sweeping hollow whoosh), "sway" (swings left and right once a bar), and on instrument tracks "swing" (off-beat notes come late, for a shuffle — eighths, or sixteenths when the clip has notes on them). The filter's "kind" can also be "band" (keeps only a slice around the cutoff: a telephone or small-radio sound). "filter_wobble" {"rate": 2 | 1 | 0.5 | 0.333 | 0.25 (beats for one wobble), "depth": 0–100} opens and closes the filter in time with the song — the dubstep wub (try growl-bass or supersaw with a low filter, rate 0.5 or 0.333).
 - Acoustic instruments: guitar, harp, kalimba, marimba, flute, brass.
 - Any track can have a "harmoniser" {"voices": "below" | "fifth" | "major" | "minor" | "wide", "volume": 0–100}: copies of its sound at other pitches, a fixed step away, sung along with it — the stacked-voice sound of Bon Iver on a recorded voice, or a big octave sound on a lead. "major" and "minor" add chords, so pick the one that matches the song's key. null switches it off.
+- The song can have a key (set_song "key": "A minor"), named sections along the ruler (set_song "sections": [{"bar": 1, "name": "Intro"}, …] — name the parts of any song you write, it helps the user find their way round) and finishing touches on the whole mix ("finish": {"bass", "treble", "squeeze"} — a little squeeze, 20–40, makes a finished song sound fuller).
 - Automation (set_automation): a line drawn over the song moves a track's "volume", "filter" (its cutoff) or "pan" as the song plays — for a fade-out at the end, a filter opening over a build, or a sound drifting from side to side. Unlike a clip's filter_sweep, a line can cross many clips. A clip's own sweep wins over the filter line while that clip plays.
 - The "sweep" instrument is a rush of noise for builds: a note from C4 up rises and swells for as long as the note lasts (a 4-bar note = a 4-bar build; higher notes end higher); a note below C4 falls and dies away.
 - Drum kits: "drums" (an ordinary kit), "drums-808" (trap and hip-hop: booming kick, snappy snare, ticking hats) and "drums-electro" (house, techno, drum and bass). "bass-808" is the long, gliding bass of trap. The library has trap, house, techno, drum-and-bass and lo-fi beats and a build-up.
@@ -229,6 +232,12 @@ export function describeSong(song: Song, opts: { notes?: boolean; only?: Clip } 
   const lines = [
     `Song "${song.name}": ${r6(song.bpm)} beats a minute, ${song.beatsPerBar} beats in a bar, ${r6(length / song.beatsPerBar)} bars long (${timeText(beatsToSeconds(length, song.bpm))}). Loop ${song.loop.on ? `on, bar ${barOf(song, song.loop.start)} to ${barOf(song, song.loop.end)}` : "off"}. Master volume ${pct(song.master)}.`,
   ];
+  if (song.key) lines.push(`Key: ${keyWords(song.key).replace("♭", "b").replace("♯", "#")}.`);
+  if (song.sections?.length) lines.push(`Sections: ${song.sections.map((x) => `${x.name} (bar ${barOf(song, x.beat)})`).join(", ")}.`);
+  if (song.finish) {
+    const f = finishOf(song.finish);
+    lines.push(`Finishing touches: ${[f.lows ? `bass ${Math.round(f.lows * 100)}` : "", f.highs ? `treble ${Math.round(f.highs * 100)}` : "", f.squeeze ? `squeeze ${pct(f.squeeze)}` : ""].filter(Boolean).join(", ")}.`);
+  }
   if (!song.tracks.length) lines.push("No tracks yet. add_track makes one; insert_library_pattern adds a ready-made beat, bass line or chords on a track of its own.");
   song.tracks.forEach((t, i) => {
     if (opts.only && opts.only.trackId !== t.id) return;
@@ -428,7 +437,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "set_song",
     title: "Change the song's settings",
-    description: "Change the song's name, tempo, beats in a bar, master volume or the loop (the part that repeats when the user plays).",
+    description: "Change the song's name, tempo, beats in a bar, master volume, the loop (the part that repeats when the user plays), its key, its named sections (Intro, Verse, Chorus…) or its finishing touches (bass, treble and squeeze on the whole song).",
     inputSchema: {
       type: "object",
       properties: {
@@ -437,10 +446,13 @@ export const TOOLS: ToolDef[] = [
         beats_per_bar: { type: "number", description: "2–12." },
         master_volume: { type: "number", description: "Per cent, 0–100 (80 is the usual)." },
         loop: { type: "object", description: '{"on": true, "start_bar": 1, "end_bar": 5} repeats bars 1 to 4.', properties: { on: { type: "boolean" }, start_bar: { type: "number" }, end_bar: { type: "number" } } },
+        key: { description: 'The song\'s key, e.g. "A minor", "Eb major", "F# minor" (the app shades notes outside it and draws chords from it), or null for none.' },
+        sections: { description: 'Named parts of the song, replacing those there: [{"bar": 1, "name": "Intro"}, {"bar": 5, "name": "Verse"}, {"bar": 13, "name": "Chorus"}]; each lasts until the next. [] or null takes them away.' },
+        finish: { type: "object", description: 'Finishing touches on the whole song: {"bass": −100…100, "treble": −100…100, "squeeze": 0–100 (fuller and steadier)}. 0 is off.', properties: { bass: { type: "number" }, treble: { type: "number" }, squeeze: { type: "number" } } },
       },
     },
     run(s, a) {
-      noExtras(a, ["name", "tempo", "beats_per_bar", "master_volume", "loop"], "set_song");
+      noExtras(a, ["name", "tempo", "beats_per_bar", "master_volume", "loop", "key", "sections", "finish"], "set_song");
       let song = s.song;
       if (a.name !== undefined) song = edits.setSongName(song, text(a.name, "name"));
       if (a.tempo !== undefined) song = edits.setBpm(song, num(a.tempo, "tempo", { min: MIN_BPM, max: MAX_BPM }));
@@ -457,8 +469,33 @@ export const TOOLS: ToolDef[] = [
         if (to <= from) throw new InputError(`loop: end_bar must be after start_bar (the loop runs up to the START of end_bar, so bars 1 to 4 is start_bar 1, end_bar 5).`);
         song = edits.setLoop(song, { on: bool(l.on, "loop.on", song.loop.on), start: from, end: to });
       }
+      if (a.key === null) song = edits.setKey(song, null);
+      else if (a.key !== undefined) song = edits.setKey(song, keyOf(a.key));
+      if (a.sections === null) song = edits.setSections(song, []);
+      else if (a.sections !== undefined) {
+        const given = list(a.sections, "sections", { allowEmpty: true }).map((x, i) => {
+          const o = object(x, `sections[${i}]`);
+          noExtras(o, ["bar", "name"], `sections[${i}]`);
+          return { beat: beatOfBar(song, num(o.bar, `sections[${i}].bar`, { min: 1, max: MOST_BEATS / song.beatsPerBar })), name: text(o.name, `sections[${i}].name`) };
+        });
+        if (given.length > MOST_SECTIONS) throw new InputError(`A song can have at most ${MOST_SECTIONS} sections.`);
+        if (new Set(given.map((g) => g.beat)).size !== given.length) throw new InputError("Two sections start at the same bar: give each its own.");
+        song = edits.setSections(song, given);
+      }
+      if (a.finish !== undefined && a.finish !== null) {
+        const f = object(a.finish, "finish");
+        noExtras(f, ["bass", "treble", "squeeze"], "finish");
+        const patch: Partial<Finish> = {};
+        const bass = optionalNum(f.bass, "finish.bass (−100 to 100)", { min: -100, max: 100 });
+        if (bass !== undefined) patch.lows = r6(bass / 100);
+        const treble = optionalNum(f.treble, "finish.treble (−100 to 100)", { min: -100, max: 100 });
+        if (treble !== undefined) patch.highs = r6(treble / 100);
+        const squeeze = share(f.squeeze, "finish.squeeze");
+        if (squeeze !== undefined) patch.squeeze = squeeze;
+        song = edits.setFinish(song, patch);
+      }
       if (!s.commit(song)) return say("Nothing was changed (those are the song's settings already).");
-      return say(describeSong(song).split("\n")[0]);
+      return say(describeSong(song).split("\n").filter((line, i) => i === 0 || /^(Key|Sections|Finishing touches):/.test(line)).join("\n"));
     },
   },
   {
@@ -999,4 +1036,16 @@ export async function callTool(s: Session, name: string, args: unknown, signal?:
 /** What a cancelled call says (Claude has stopped waiting, so it's mostly for logs and tests). */
 export function cancelledResult(): ToolResult {
   return { content: [{ type: "text", text: "Cancelled: the call was stopped before it finished, and nothing was changed." }], isError: true };
+}
+
+/** A key from words like "A minor", "Eb major", "F#" (major when the scale isn't said). */
+function keyOf(v: unknown): SongKey {
+  const words = text(v, "key").trim();
+  const m = /^([A-Ga-g])\s*([#♯b♭]?)\s*(major|minor|maj|min|m)?$/i.exec(words);
+  if (!m) throw new InputError(`key: "${words}" isn't a key — say it like "A minor", "Eb major" or "F# minor".`);
+  const letter = m[1].toUpperCase();
+  const base = KEYS.find((k) => k.value === letter)?.index ?? 0;
+  const shift = m[2] === "#" || m[2] === "♯" ? 1 : m[2] === "b" || m[2] === "♭" ? -1 : 0;
+  const scale = m[3] && /^(minor|min|m)$/i.test(m[3]) ? "minor" : "major";
+  return { note: (base + shift + 12) % 12, scale };
 }
