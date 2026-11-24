@@ -238,6 +238,13 @@ export const Icons = {
       <ellipse cx="15" cy="6" rx="3" ry="2.2" fill="currentColor" stroke="none" />
     </Svg>
   ),
+  /** Recent: a clock. */
+  Recent: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </Svg>
+  ),
   /** Automation: a line with points on it. */
   Automation: (p: IconProps) => (
     <Svg {...p}>

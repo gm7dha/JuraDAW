@@ -424,6 +424,10 @@ try {
     await until('s.history.present.sections?.length === 2 && s.history.present.sections[1].beat === 16 && s.history.present.sections[1].name === "Verse"', "a second section from bar 5, offered the name Verse");
     await page.click('.section-flag:has-text("Verse")');
     await until("s.cursor === 16", "a click on a section playing from its start");
+    await page.locator('.section-flag:has-text("Opening")').click({ button: "right" });
+    await page.click(".bed-menu button:has-text('Loop this section')");
+    await until("s.history.present.loop.on && s.history.present.loop.start === 0 && s.history.present.loop.end === 16", "a section looped, up to the next one");
+    await page.evaluate(() => window.juradawStore.getState().setLoop({ on: false }));
     await page.locator('.section-flag:has-text("Verse")').click({ button: "right" });
     await page.click(".bed-menu button:has-text('Delete the name')");
     await until("s.history.present.sections?.length === 1", "a section's name taken away");
@@ -708,6 +712,28 @@ try {
   await closeToasts();
   // The sound comes back from the browser's own storage, and is drawn again.
   await page.waitForSelector(`[data-clip="${soundClip.id}"] .clip-wave path`);
+
+  begin("Recent: New keeps the song, and Recent opens it again with its recording");
+  {
+    const was = await song();
+    const asked = [];
+    const answer = (d) => {
+      asked.push(d.message());
+      void d.accept();
+    };
+    page.on("dialog", answer);
+    await topButton("New").click();
+    await until("s.history.present.tracks.length === 0", "a new, empty song");
+    page.off("dialog", answer);
+    expect(asked.every((m) => /kept in Recent/.test(m)), `New saying the song is kept in Recent (${asked.join(" | ")})`);
+    await page.click(".recent-button");
+    await page.waitForSelector(`.recent-list li:has-text("${was.name}") .recent-thumb rect`);
+    await page.click(`.recent-open:has-text("${was.name}")`);
+    await until(`s.history.present.name === ${JSON.stringify(was.name)} && s.history.present.tracks.length === ${was.tracks.length} && s.history.present.clips.length === ${was.clips.length}`, "the song back from Recent");
+    expect((await get("s.history.past.length")) === 0, "opened afresh, with nothing to undo into the other song");
+    await page.waitForSelector(`[data-clip="${soundClip.id}"] .clip-wave path`);
+    await closeToasts();
+  }
 
   begin("dark mode, Help and What's new");
   await closeToasts();

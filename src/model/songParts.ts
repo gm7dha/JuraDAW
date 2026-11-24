@@ -5,7 +5,8 @@
  */
 import { KEYS, chordFrom, inScale } from "../library/theory";
 import { MOST_BEATS } from "./document";
-import type { Finish, Section, SongKey } from "./types";
+import { songLength } from "./time";
+import type { Finish, Section, Song, SongKey } from "./types";
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
@@ -80,6 +81,14 @@ export function nextSectionName(sections: readonly Section[], beat: number): str
   let n = sections.length + 1;
   while (used.has(`Part ${n}`)) n++;
   return `Part ${n}`;
+}
+
+/** Where the section starting at a beat ends: the next section's start, else the end of the song's last bar (at least a bar on). */
+export function sectionEnd(song: Pick<Song, "sections" | "beatsPerBar" | "tracks" | "clips" | "bpm">, beat: number): number {
+  const next = (song.sections ?? []).find((s) => s.beat > beat + 1e-9);
+  if (next) return next.beat;
+  const bpb = song.beatsPerBar;
+  return Math.max(beat + bpb, Math.ceil(songLength(song as Song) / bpb - 1e-9) * bpb);
 }
 
 /** The section playing at a beat, or null before the first. */

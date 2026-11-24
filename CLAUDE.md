@@ -143,6 +143,16 @@
   [{bar, name}] | null and finish {bass, treble, squeeze}; describe_song says them. The smoke test compares songs
   with `sameData` (field order doesn't count).
 
+- v0.8 recent songs (JuraCUT's recent designs, for songs): pure `src/model/recent.ts` (`MOST_RECENT` 12, `RecentMeta`
+  with tracks, bars, `soundIds` and a `thumbnail` — tracks as rows of clip blocks in their colours —, `keepRecent`
+  — songs with no tracks aren't kept —, `recentList`, `recentSoundIds`, `openRecent`, `memoryStore`);
+  `src/app/recentApp.ts` (IndexedDB "juradaw-recent" — apart from the sounds' "juradaw" — stores recentMeta/
+  recentSongs; current id in localStorage `juradaw.recentId`; `startRecent` (App) keeps 2 s after changes;
+  `beforeOtherSong` in New and Open keeps then starts a new id; `openRecentSong` → `loadSong` (no undo into the
+  other song) + `loadSounds`); `forgetUnusedSounds` keeps every sound a recent song uses (`soundsOfRecent`), so a
+  reopened song has its recordings. `src/app/RecentMenu.tsx` in the top bar (icon only under 1100 px); New and
+  Open's questions say the song is kept in Recent. Sections: "Loop this section" (`sectionEnd` in songParts.ts).
+
 - **Nothing is ever put on top of a clip that's already there** (two clips in one place hide each other and both
   play). The store keeps to it wherever it places something itself: `addFromLibrary` (below), `addTake` (a take that
   would lie on a clip keeps its place in time and goes on a new track like its own — same instrument and settings —
@@ -164,7 +174,7 @@
   are, past about 300 MB of sound —, `songFileText`, `readSongFile` → song, sounds, `missingSounds`; own
   `bytesToBase64`/`base64ToBytes` so Node and every browser agree). `src/model/keep.ts` keeps the song in localStorage
   (`juradaw.song.v1`; `keepProblem` says why when the browser won't). The sounds are kept apart, in IndexedDB (below).
-  Other keys on this computer: `juradaw.theme`, `juradaw.prefs.v1` (count-in, metronome and "connect MIDI keyboards
+  Other keys on this computer: `juradaw.recentId`, `juradaw.theme`, `juradaw.prefs.v1` (count-in, metronome and "connect MIDI keyboards
   without asking", `src/app/prefs.ts`),
   `juradaw.panelHeight`, `juradaw.seenVersion`.
 - MIDI files: `src/midi/midiFile.ts` (pure: bytes in, bytes out). Reads format 0 and 1 (running status, note-on with
@@ -327,7 +337,7 @@
   and 1024 px — at 1280 also with the "Notes on" button showing.
 - Tests (`tests/*.test.ts`, Vitest, pure code only — each file stands alone): time, edits, document (also keep and
   the changelog reader), historyClipboard, store, midiFile, library, audioSchedule (schedule, loop windows, takes,
-  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
+  mixer sums), audioWav (WAV and the plucked string), shaping (effects, fades, sweeps, the harmoniser, their curves and files), automation (lines, their edits and files), songParts (key, sections, finishing touches), recent (recent songs, a section's end), appHelpers (songUi — snap words, bars and beats, the loop strip, the panel's height,
   which toasts show, clips over others, export words —, `gridFor`, `visibleBeats`, `edgeSpeed`, keysState, popupGuard,
   prefs), easterEgg, and the Claude extension's (liveProtocol, liveRelay, liveLink, mcpTools — these use Node's
   files, http and WebSocket). Pure logic lives outside React and gets a test; the sound itself is checked by the
@@ -348,7 +358,7 @@
   each), Save → New → Open (the same song back), Open and a dropped file asking first when there are unsaved changes
   (no: the song stays; yes: it opens), a WAV it makes itself imported as a clip (waveform drawn, and inside the saved
   file), a clip renamed on the clip, undo/redo/History, a clip dragged to the edge (the view scrolls), a reload (the
-  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, sections named, clicked and deleted on the ruler, the key chosen and a chord drawn in the editor, the song's squeeze, a pretend MIDI keyboard that the page must not ask the
+  song, its sound and the count-in kept in the browser), an automation line drawn, moved, a point taken away and cleared, the harmoniser switched on, changed and off, the acoustic instruments, Squeeze/Sway/Swirl/Swing, the band filter and the filter wobble heard while playing, sections named, clicked and deleted on the ruler, the key chosen and a chord drawn in the editor, the song's squeeze, a section looped, New keeping the song in Recent and Recent opening it again with its recording, a pretend MIDI keyboard that the page must not ask the
   browser for until "Connect a MIDI keyboard" is pressed (and must reconnect by itself after a reload), dark mode,
   Help, What's new, and the bars fitting at 1024 and 1280 px. It fails on any console
   error. It never waits a fixed time: every step waits for what it expects (`until`, `playedPast`), and messages are

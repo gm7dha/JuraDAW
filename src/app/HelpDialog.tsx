@@ -149,7 +149,10 @@ export function HelpDialog() {
         </li>
         <li>
           <strong>Sections</strong>: press <em>+ Section</em> by the ruler (or right-click the ruler) to name a part of the song — Intro, Verse, Chorus. Click a section to play from it,
-          double-click to rename it.
+          double-click to rename it, right-click to loop it.
+        </li>
+        <li>
+          <strong>Recent</strong>, in the top bar, opens any of the last 12 songs you've worked on in this browser — so New never loses the song you had.
         </li>
         <li>
           <strong>Key and chords</strong>: choose the song's <em>Key</em> in the note editor and the notes outside it are shaded. Press <em>Chords</em> and each note you add becomes a whole

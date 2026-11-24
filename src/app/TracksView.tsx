@@ -13,7 +13,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useStore } from "../model/store";
 import { AUTO_PARAMS } from "../model/automation";
 import * as edits from "../model/edits";
-import { nextSectionName } from "../model/songParts";
+import { nextSectionName, sectionEnd } from "../model/songParts";
 import type { AutoPoint, Clip, Song, Track } from "../model/types";
 import { addTrackOf, NEW_TRACKS } from "./addTracks";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
@@ -261,6 +261,13 @@ function Timeline() {
     const now = s.history.present;
     s.commit(edits.setSections(now, (now.sections ?? []).filter((x) => Math.abs(x.beat - beat) > 1e-6)));
   };
+  /** Loop a section: from its start to the next section's (or to the end of the song, on a bar line). */
+  const loopSection = (beat: number) => {
+    const s = useStore.getState();
+    const now = s.history.present;
+    s.setLoop({ on: true, start: beat, end: sectionEnd(now, beat) });
+    seek(beat);
+  };
   const rulerMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const r = e.currentTarget.getBoundingClientRect();
@@ -276,6 +283,7 @@ function Timeline() {
       y: e.clientY,
       entries: [
         { label: "Play from here", act: () => seek(beat) },
+        { label: "Loop this section", act: () => loopSection(beat) },
         { label: "Rename", act: () => setRenamingSection(beat) },
         { label: "Delete the name", act: () => removeSection(beat) },
       ],

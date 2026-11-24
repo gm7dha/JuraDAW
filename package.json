@@ -1,7 +1,7 @@
 {
   "name": "juradaw",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Free, open-source, browser-based music studio (DAW) with MIDI and many tracks. Sister app to JuraCAD and JuraCUT.",
   "license": "MIT",
   "type": "module",

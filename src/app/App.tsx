@@ -11,6 +11,7 @@ import { browserStorage, keepProblem, readKept } from "../model/keep";
 import { useStore } from "../model/store";
 import { BottomPanel } from "./BottomPanel";
 import { goToStart, loadSounds, startEngineApp, togglePlay, toggleRecord } from "./engineApp";
+import { startRecent } from "./recentApp";
 import { ExportDialog } from "./ExportDialog";
 import { openFiles, openFromFile, saveToFile } from "./fileActions";
 import { HelpDialog } from "./HelpDialog";
@@ -39,6 +40,8 @@ export function App() {
   useFileDrop();
   // The song and the sound engine, kept in step.
   useEffect(() => startEngineApp(), []);
+  // Recent songs: the song open is kept as it changes.
+  useEffect(() => startRecent(), []);
 
   return (
     <div className="app">
